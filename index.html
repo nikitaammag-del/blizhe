@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Ближе к людям — самостоятельное развитие коммуникации</title>
+<!-- viewport-fit=cover нужен, чтобы контент учитывал «чёлку» и полосу жестов на телефоне -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Ближе к людям: говори, узнавай, расти. Самостоятельное развитие коммуникации — ежедневная программа на 25–30 минут.">
+<meta name="theme-color" content="#0F0F12">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Ближе">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+
+<style>
+/* ===================== ДИЗАЙН-ТОКЕНЫ ===================== */
+:root{
+  --bg:#0F0F12; --bg2:#15151A; --card:#1A1A20; --line:#2A2A33;
+  --text:#ECECF1; --muted:#A3A3B1;
+  --amber:#F5A623; --amber-ink:#1A1204;      /* акцент + цвет текста на янтарном */
+  --emerald:#2ECC71; --danger:#FF6B6B;
+  --radius:18px; --radius-s:12px;
+  --shadow:0 1px 2px rgba(0,0,0,.35),0 8px 24px rgba(0,0,0,.25);
+  --font:Inter,-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --fs:100;                                   /* масштаб шрифта, % (настройка доступности) */
+}
+:root[data-theme="light"]{
+  --bg:#F7F7F4; --bg2:#EFEFEA; --card:#FFFFFF; --line:#DEDED6;
+  --text:#17171C; --muted:#585866;
+  --amber:#B36B00; --amber-ink:#FFFFFF; --emerald:#1B8A4B; --danger:#C0392B;
+  --shadow:0 1px 2px rgba(20,20,30,.08),0 8px 24px rgba(20,20,30,.08);
+}
+*{box-sizing:border-box}
+html{font-size:calc(var(--fs) * 1%); scroll-padding-top:calc(72px + env(safe-area-inset-top,0px)); -webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:400 1.0625rem/1.6 var(--font);
+  padding-top:env(safe-area-inset-top,0px);min-height:100vh;-webkit-font-smoothing:antialiased}
+h1,h2,h3{line-height:1.2;margin:0;letter-spacing:-.01em}
+h1{font-size:1.9rem;font-weight:700} h2{font-size:1.3rem;font-weight:650} h3{font-size:1.05rem;font-weight:650}
+p{margin:.5em 0} a{color:var(--amber)} small,.muted{color:var(--muted)}
+button,input,textarea,select{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--amber);outline-offset:2px;border-radius:8px}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.skip{position:absolute;left:-999px;top:8px;background:var(--amber);color:var(--amber-ink);padding:8px 14px;border-radius:8px;z-index:100}
+.skip:focus{left:8px}
+
+/* ===================== КАРКАС ===================== */
+.shell{display:grid;grid-template-columns:minmax(0,1fr);min-height:100vh}
+.shell>div{min-width:0}
+.side{display:none}
+.top{position:sticky;top:0;z-index:20;padding:10px 14px;display:flex;gap:10px;align-items:center;
+  background:color-mix(in srgb,var(--bg) 82%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+.brand{font-weight:700;font-size:1.05rem;white-space:nowrap;display:flex;align-items:center;gap:8px}
+.bt{font-weight:700}
+@media(max-width:480px){.more{display:none}}
+@media(max-width:360px){.bt{display:none}}
+.brand i{width:26px;height:26px;border-radius:8px;background:var(--amber);display:inline-block;position:relative}
+.brand i::after{content:"";position:absolute;inset:7px 7px 7px 7px;border-radius:50%;background:var(--bg)}
+.search{flex:1;min-width:0;width:0;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:8px 14px;font-size:.95rem}
+.iconbtn{background:var(--card);border:1px solid var(--line);border-radius:999px;min-width:40px;height:40px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0 12px;gap:6px}
+.iconbtn:hover{border-color:var(--amber)}
+.iconbtn[aria-pressed="true"]{color:var(--amber);border-color:var(--amber)}
+main{padding:18px 14px 120px;max-width:780px;width:100%;margin:0 auto;outline:none}
+
+/* Нижняя навигация (телефон) */
+.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;justify-content:space-around;
+  background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom,0px))}
+.tabbar a,.side a{color:var(--muted);text-decoration:none;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:.72rem;padding:6px 10px;border-radius:12px;min-width:56px}
+.tabbar a[aria-current="page"]{color:var(--amber)}
+.tabbar .ic{font-size:1.25rem;line-height:1}
+
+@media(min-width:900px){
+  .shell{grid-template-columns:270px minmax(0,1fr)}
+  .side{display:block;position:sticky;top:0;height:100vh;overflow:auto;padding:22px 14px;border-right:1px solid var(--line)}
+  .side a{flex-direction:row;font-size:.95rem;gap:10px;padding:8px 12px;align-items:center}
+  .side a[aria-current="page"]{background:var(--card);color:var(--amber)}
+  .side .grp{margin:16px 12px 6px;color:var(--muted);font-size:.85rem}
+  .tabbar{display:none} main{padding-bottom:60px}
+  .brand-side{padding:0 12px 10px;font-weight:700;font-size:1.15rem}
+}
+
+/* ===================== КАРТОЧКИ ===================== */
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin:14px 0;box-shadow:var(--shadow)}
+.card>header{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.card>header .n{width:30px;height:30px;border-radius:50%;background:var(--bg2);border:1px solid var(--line);display:grid;place-items:center;font-size:.85rem;color:var(--muted);flex:none}
+.card.done>header .n{background:var(--emerald);border-color:var(--emerald);color:#06210F}
+.card>header h2{flex:1}
+.mins{color:var(--muted);font-size:.85rem;white-space:nowrap}
+.card>footer{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:14px;padding-top:12px;border-top:1px dashed var(--line)}
+.chk{display:inline-flex;gap:10px;align-items:center;cursor:pointer;font-weight:600}
+.chk input{width:22px;height:22px;accent-color:var(--emerald)}
+.item{padding:12px 0;border-top:1px solid var(--line)} .item:first-of-type{border-top:0}
+.item .meta{color:var(--muted);font-size:.85rem}
+.tag{display:inline-block;font-size:.78rem;padding:2px 10px;border-radius:999px;border:1px solid var(--line);color:var(--muted);margin-right:6px}
+.tag.amber{color:var(--amber);border-color:var(--amber)}
+.quote{font-size:1.12rem;font-weight:500;line-height:1.5}
+.quote-by{color:var(--muted);font-size:.9rem;margin-top:4px}
+pre.prompt{white-space:pre-wrap;word-break:break-word;background:var(--bg2);border:1px solid var(--line);border-radius:var(--radius-s);padding:14px;font:400 .95rem/1.55 var(--font);margin:8px 0}
+.btn{background:var(--amber);color:var(--amber-ink);border:0;border-radius:12px;padding:10px 16px;font-weight:650;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--text);border:1px solid var(--line)}
+.btn.ghost:hover{border-color:var(--amber)}
+.btn.sm{padding:6px 12px;font-size:.9rem;border-radius:10px}
+textarea,.input{width:100%;background:var(--bg2);border:1px solid var(--line);border-radius:var(--radius-s);padding:10px 12px;min-height:44px}
+textarea{min-height:88px;resize:vertical}
+label.f{display:block;margin:12px 0 4px;font-weight:600}
+details{margin:8px 0} summary{cursor:pointer;color:var(--amber);font-weight:600}
+ul.clean{padding-left:1.1em;margin:.4em 0}
+.hero{padding:6px 0 4px}
+.hero .phrase{font-size:1.5rem;font-weight:650;letter-spacing:-.015em;margin:8px 0}
+.bar{height:10px;background:var(--bg2);border:1px solid var(--line);border-radius:99px;overflow:hidden;margin:12px 0 4px}
+.bar>i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--amber),var(--emerald));transition:width .6s ease}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.stat{background:var(--bg2);border:1px solid var(--line);border-radius:var(--radius-s);padding:12px}
+.stat b{display:block;font-size:1.5rem}
+.empty{text-align:center;padding:28px 14px;color:var(--muted)} .empty .ic{font-size:2rem;display:block;margin-bottom:6px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+.chip{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:6px 14px;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--amber);color:var(--amber-ink);border-color:var(--amber)}
+.skeleton{height:14px;background:linear-gradient(90deg,var(--bg2),var(--line),var(--bg2));background-size:200% 100%;animation:sh 1.4s infinite;border-radius:6px;margin:10px 0}
+@keyframes sh{to{background-position:-200% 0}}
+.banner{background:var(--bg2);border:1px solid var(--amber);border-radius:var(--radius-s);padding:10px 14px;margin:10px 0;font-size:.95rem}
+.week{display:flex;gap:6px;align-items:flex-end;height:70px;margin:10px 0}
+.week div{flex:1;background:var(--bg2);border-radius:6px;position:relative;min-height:6px}
+.week div i{position:absolute;bottom:0;left:0;right:0;background:var(--emerald);border-radius:6px}
+.badge{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:6px 0;display:flex;gap:10px;align-items:center}
+.badge.on{border-color:var(--emerald)} .badge:not(.on){opacity:.6}
+
+/* Появление секций: одна скромная анимация при загрузке (отключается для reduced-motion) */
+.card{animation:up .35s ease both}
+@keyframes up{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+
+/* ===================== ДИАЛОГИ ===================== */
+dialog{border:1px solid var(--line);border-radius:var(--radius);background:var(--card);color:var(--text);max-width:min(560px,92vw);width:100%;padding:20px;box-shadow:var(--shadow)}
+dialog::backdrop{background:rgba(0,0,0,.6)}
+.onb{position:fixed;inset:0;z-index:100;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:calc(20px + env(safe-area-inset-top,0px)) 20px calc(20px + env(safe-area-inset-bottom,0px));overflow:auto}
+.onb .box{max-width:460px;width:100%}
+.dots{display:flex;gap:6px;margin:18px 0}.dots i{height:6px;flex:1;border-radius:9px;background:var(--line)}.dots i.on{background:var(--amber)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));background:var(--text);color:var(--bg);padding:10px 16px;border-radius:12px;z-index:200;max-width:90vw;box-shadow:var(--shadow)}
+[hidden]{display:none!important}
+
+/* ===================== ПЕЧАТЬ (экспорт в PDF через браузер) ===================== */
+@media print{
+  :root{--bg:#fff;--card:#fff;--bg2:#fff;--line:#ccc;--text:#000;--muted:#333;--amber:#000}
+  .side,.tabbar,.top,.card>footer,.btn,.iconbtn,.skip,.toast{display:none!important}
+  details{display:block} details>*{display:block}
+  .card{box-shadow:none;break-inside:avoid;animation:none}
+  main{max-width:none;padding:0}
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#view">Перейти к содержимому</a>
+
+<div class="shell">
+  <!-- Боковая навигация (десктоп) -->
+  <aside class="side" id="side" aria-label="Разделы приложения"></aside>
+
+  <div>
+    <header class="top" role="banner">
+      <span class="brand"><i aria-hidden="true"></i><b class="bt">Ближе<span class="more"> к людям</span></b></span>
+      <input id="q" class="search" type="search" placeholder="Поиск…" aria-label="Поиск по содержимому" autocomplete="off">
+      <button class="iconbtn" id="lucky" title="Мне повезло" aria-label="Мне повезло: случайный материал">🎲</button>
+      <button class="iconbtn" id="themeBtn" title="Тема" aria-label="Переключить тему">🌓</button>
+    </header>
+    <main id="view" tabindex="-1" aria-live="polite"></main>
+  </div>
+</div>
+
+<!-- Нижняя навигация (телефон) -->
+<nav class="tabbar" id="tabbar" aria-label="Основная навигация"></nav>
+
+<div id="onb" class="onb" role="dialog" aria-modal="true" aria-label="Первый запуск" hidden></div>
+<dialog id="dlg" aria-label="Окно"></dialog>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+<input type="file" id="importFile" accept="application/json" hidden>
+
+<noscript><p style="padding:20px">Для работы приложения нужен JavaScript.</p></noscript>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
