@@ -157,14 +157,29 @@ async function buildNews(seen) {
     x.tags = [...(ru ? ['Россия'] : []), ...(dis ? ['открытия и наука'] : [])];
     x.score = Math.round((x.w + 3 * (1 - Math.min(x.hrs, 72) / 72) + 1.5 * Math.min(srcs.size, 2) + (ru ? 3 : 0) + (dis ? 3 : 0) + (ru && dis ? 1 : 0) - (CLICKBAIT.test(x.title) ? 1.5 : 0)) * 100) / 100;
   });
-  const per = {}, out = [];
-  pool.sort((a, b) => b.score - a.score).forEach(x => {
-    if (out.length >= 6 || (per[x.src] || 0) >= 2) return;
-    const t = toks(x.title); if (out.some(c => { let n = 0; t.forEach(w => { if (c._t.has(w)) n++; }); return n >= 3; })) return; // та же история из другого издания
-    x._t = t; per[x.src] = (per[x.src] || 0) + 1; out.push(x);
-  });
+  const sorted = pool.sort((a, b) => b.score - a.score);
+  const choose = (cands, start = []) => {
+    const res = [...start], per = {}; res.forEach(x => { per[x.src] = (per[x.src] || 0) + 1; });
+    cands.forEach(x => {
+      if (res.length >= 6 || (per[x.src] || 0) >= 2) return;
+      const t = x._t || toks(x.title); if (res.some(c => { let n = 0; t.forEach(w => { if (c._t.has(w)) n++; }); return n >= 3; })) return; // та же история из другого издания
+      x._t = t; per[x.src] = (per[x.src] || 0) + 1; res.push(x);
+    });
+    return res;
+  };
+  let out = choose(sorted);
+  /* Всё в приложении должно быть по-русски: английские новости переводим, а если перевода нет — заменяем русскими */
+  const en = out.filter(x => x.lang === 'en');
+  if (en.length && HAS_LLM) { try {
+    const tr = await toRussian(en.map(x => ({ title: x.title, text: clip(x.desc, 220) })), 'news');
+    en.forEach((x, i) => { if (cyr(tr[i].title) >= 0.5) { x.orig = x.title; x.title = tr[i].title; x.desc = tr[i].text; x.tr = LLM_NAME; x.lang = 'ru'; } });
+    const n = en.filter(x => x.tr).length; report['news:translate'] = n === en.length ? `ok (переведено ${n})` : `переведено ${n} из ${en.length}, остальные заменены русскими`;
+  } catch (e) { report['news:translate'] = 'fail: ' + e.message; } }
+  const kept = out.filter(x => x.lang === 'ru');
+  if (kept.length < out.length) out = choose(sorted.filter(x => x.lang === 'ru' && !kept.includes(x)), kept);
+  out.sort((a, b) => b.score - a.score);
   if (!out.length) throw new Error('нет свежих новостей');
-  return out.map(x => ({ t: x.title, s: clip(x.desc, 220), l: x.link, src: x.src, cat: x.cat, lang: x.lang, d: x.date.slice(0, 16), score: x.score, tags: x.tags }));
+  return out.map(x => ({ t: x.title, s: clip(x.desc, 220), l: x.link, src: x.src, cat: x.cat, lang: x.lang, d: x.date.slice(0, 16), score: x.score, tags: x.tags, ...(x.tr ? { tr: x.tr, orig: x.orig } : {}) }));
 }
 
 /* =====================================================================
@@ -190,9 +205,11 @@ async function buildPrompts(seen) {
   const top = ranked.slice(0, 60); const pickd = rot(top, 3);
   let items = pickd.map(x => ({ id: 'ac' + norm(x.title).replace(/ /g, '').slice(0, 20), cat: 'каталог', title: x.title, text: x.text, src: 'Awesome ChatGPT Prompts (CC0)', lang: 'en', score: x.score }));
   if (HAS_LLM && items.length) { try {
-    const tr = JSON.parse(extractJSON(await llm(`Переведи на русский язык тексты промптов и их названия. Сохрани смысл, структуру и все плейсхолдеры в [скобках] и {фигурных скобках}. Верни ТОЛЬКО JSON-массив вида [{"title":"...","text":"..."}] в том же порядке.\n\n${JSON.stringify(items.map(i => ({ title: i.title, text: i.text })))}`, 4000)));
-    if (Array.isArray(tr) && tr.length === items.length) items = items.map((it, i) => ({ ...it, title: String(tr[i].title || it.title), text: String(tr[i].text || it.text), lang: 'ru', src: it.src + ', перевод: ' + LLM_NAME }));
+    const tr = await toRussian(items.map(i => ({ title: i.title, text: i.text })), 'prompt');
+    items = items.map((it, i) => (cyr(tr[i].title) >= 0.5 && cyr(tr[i].text) >= 0.4) ? { ...it, title: tr[i].title, text: tr[i].text, lang: 'ru', src: it.src + ', перевод: ' + LLM_NAME } : it);
   } catch (e) { report['prompts:translate'] = 'fail: ' + e.message; } }
+  items = items.filter(x => x.lang === 'ru');
+  if (!items.length) throw new Error('английский промпт не показываем: нужен перевод (ключ GigaChat) — блок скрыт, остаётся русская библиотека');
   return items;
 }
 
@@ -230,12 +247,20 @@ async function buildWord(seen) {
    ===================================================================== */
 const SUBJECTS = ['science', 'physics', 'artificial intelligence', 'mathematics', 'history of science', 'communication', 'psychology', 'philosophy', 'biography', 'business'];
 async function buildBooks(seen) {
-  const subj = rot(SUBJECTS, 1)[0]; let docs = [];
+  const subj = rot(SUBJECTS, 1)[0]; let docs = [], lg = 'rus';
   for (const lang of ['rus', 'eng']) { const j = await getJSON(`https://openlibrary.org/search.json?q=${encodeURIComponent(`subject:"${subj}" language:${lang}`)}&sort=rating&limit=30&fields=key,title,author_name,first_publish_year,ratings_average,ratings_count`);
-    docs = (j.docs || []).filter(d => d.ratings_count >= 5 && d.ratings_average); if (docs.length) break; }
+    docs = (j.docs || []).filter(d => d.ratings_count >= 5 && d.ratings_average); if (docs.length) { lg = lang; break; } }
   const ranked = docs.map(d => ({ t: d.title, a: (d.author_name || ['—'])[0], y: d.first_publish_year, rating: Math.round(d.ratings_average * 100) / 100, count: d.ratings_count, url: 'https://openlibrary.org' + d.key,
     score: Math.round(d.ratings_average * Math.log(1 + d.ratings_count) * 100) / 100, why: '' })).filter(b => !seen.has(norm(b.t))).sort((a, b) => b.score - a.score);
-  if (!ranked.length) throw new Error('нет подходящих книг'); return rot(ranked.slice(0, 15), 1);
+  if (!ranked.length) throw new Error('нет подходящих книг');
+  let pick = rot(ranked.slice(0, 15), 1);
+  if (lg === 'eng') { // русскоязычных книг с оценками нет: берём зарубежную только с русским названием
+    if (!HAS_LLM) throw new Error('русских книг с оценками нет, а для перевода названий нужен ключ GigaChat — остаётся русская база');
+    const tr = await toRussian(pick.map(b => ({ title: b.t, text: b.a })), 'book');
+    pick = pick.map((b, i) => cyr(tr[i].title) >= 0.5 ? { ...b, orig: b.t, t: tr[i].title, a: tr[i].text && cyr(tr[i].text) >= 0.5 ? tr[i].text : b.a } : null).filter(Boolean);
+    if (!pick.length) throw new Error('перевод названия не удался');
+  }
+  return pick;
 }
 
 /* =====================================================================
@@ -332,6 +357,17 @@ async function claude(prompt, max = 2000) {
   return (j.content || []).map(b => b.text || '').join('');
 }
 const llm = (prompt, max) => (GIGA ? gigachat(prompt, max) : claude(prompt, max));
+
+/* ---------- Перевод на русский: всё, что показывается в приложении, должно быть по-русски ---------- */
+export const cyr = t => { const l = (t.match(/[a-zа-яё]/gi) || []).length; return l ? (t.match(/[а-яё]/gi) || []).length / l : 1; }; // доля кириллицы среди букв
+async function toRussian(list, kind) {
+  const rules = { news: 'Это новости: переводи точно, без оценок и добавлений; имена, числа, названия организаций и стран сохраняй.',
+    prompt: 'Это промпты для нейросети: сохрани структуру, списки и все плейсхолдеры в [скобках], {фигурных скобках} и ${...} без изменений.',
+    book: 'Это названия книг (title) и имена авторов (text): название переведи на русский (если есть устоявшийся русский перевод — используй его), имя автора запиши кириллицей.' }[kind];
+  const arr = JSON.parse(extractJSON(await llm(`Переведи на русский язык. ${rules} Ничего не объясняй. Верни ТОЛЬКО JSON-массив [{"title":"...","text":"..."}] того же размера и в том же порядке.\n\n${JSON.stringify(list)}`, 4000)));
+  if (!Array.isArray(arr) || arr.length !== list.length) throw new Error('перевод вернул неверный формат');
+  return arr.map(x => ({ title: String((x && x.title) || ''), text: String((x && x.text) || '') }));
+}
 const extractJSON = t => { const a = t.search(/[\[{]/); const b = Math.max(t.lastIndexOf(']'), t.lastIndexOf('}')); if (a < 0 || b < a) throw new Error('JSON не найден'); return t.slice(a, b + 1); };
 
 /* =====================================================================
