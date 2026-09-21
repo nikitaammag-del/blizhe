@@ -117,6 +117,15 @@ async function buildQuotes(seen) {
   cands.filter(q => !seen.has(norm(q.t)) && !q.doubtful).sort((a, b) => b.score - a.score || a.t.localeCompare(b.t)).forEach(q => { // цитаты с пометкой редакторов «неверная атрибуция» не берём; без источника — не больше одной за выпуск
     if (out.length < 4 && !used.has(q.a) && (q.hasSrc || !out.some(x => !x.hasSrc))) { used.add(q.a); out.push(q); } });
   if (!out.length && cands.length) throw new Exhausted('все найденные цитаты уже показывали');
+  /* Портрет автора: только файлы с Викисклада (свободные лицензии), из статьи русской Википедии о человеке. Нет фото — цитата без картинки */
+  await Promise.all(out.map(async q => {
+    try {
+      const sm = await getJSON('https://ru.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(q.a.replace(/ /g, '_')));
+      const src = sm && sm.type === 'standard' && sm.thumbnail && sm.thumbnail.source;
+      if (src && /^https:\/\/upload\.wikimedia\.org\/wikipedia\/commons\/[^\s"'<>]+$/.test(src)) q.img = { src, w: sm.thumbnail.width, h: sm.thumbnail.height };
+    } catch (e) { /* без портрета */ }
+  }));
+  report['quotes:портреты'] = `${out.filter(q => q.img).length} из ${out.length}`;
   return out;
 }
 
@@ -372,10 +381,10 @@ async function kpRating(id) {                                  // открыты
   return { kp: kp ? { r: +kp[2], n: +kp[1] } : null, imdb: im ? { r: +im[2], n: +im[1] } : null };
 }
 async function ruInfo(ids) {                                   // русские названия, статьи и номера Кинопоиска — одним запросом к Викиданным
-  const q = `SELECT ?imdb ?label ?ruwiki ?kp WHERE { VALUES ?imdb { ${ids.map(x => `"${x}"`).join(' ')} } ?item wdt:P345 ?imdb . OPTIONAL { ?item rdfs:label ?label FILTER(LANG(?label) = "ru") } OPTIONAL { ?ruwiki schema:about ?item ; schema:isPartOf <https://ru.wikipedia.org/> } OPTIONAL { ?item wdt:P2603 ?kp } }`;
+  const q = `SELECT ?imdb ?label ?desc ?ruwiki ?kp WHERE { VALUES ?imdb { ${ids.map(x => `"${x}"`).join(' ')} } ?item wdt:P345 ?imdb . OPTIONAL { ?item rdfs:label ?label FILTER(LANG(?label) = "ru") } OPTIONAL { ?item schema:description ?desc FILTER(LANG(?desc) = "ru") } OPTIONAL { ?ruwiki schema:about ?item ; schema:isPartOf <https://ru.wikipedia.org/> } OPTIONAL { ?item wdt:P2603 ?kp } }`;
   const wd = await getJSON('https://query.wikidata.org/sparql?format=json&query=' + encodeURIComponent(q)); const m = new Map();
   ((wd.results && wd.results.bindings) || []).forEach(b => { if (!b.imdb) return; const cur = m.get(b.imdb.value) || {};
-    m.set(b.imdb.value, { label: cur.label || (b.label && b.label.value), wiki: cur.wiki || (b.ruwiki && b.ruwiki.value), kp: cur.kp || (b.kp && /^\d+$/.test(b.kp.value) ? b.kp.value : '') }); });
+    m.set(b.imdb.value, { label: cur.label || (b.label && b.label.value), desc: cur.desc || (b.desc && b.desc.value), wiki: cur.wiki || (b.ruwiki && b.ruwiki.value), kp: cur.kp || (b.kp && /^\d+$/.test(b.kp.value) ? b.kp.value : '') }); });
   return m;
 }
 async function ruSummary(wikiUrl) {
@@ -409,7 +418,7 @@ async function buildCinemeta(seen) {
     const wtitle = decodeURIComponent((w.i.wiki.split('/wiki/')[1] || '')).replace(/_/g, ' ');
     return [{ k: w.x.k, t: w.i.label || wtitle, orig: w.x.name, y: w.x.y, g: w.x.g, rating: w.main.r, count: w.main.n || undefined, rsrc: w.main.src,
       imdbRating: w.im ? w.im.r : w.x.imdbR, imdbVotes: w.im ? w.im.n : undefined, kpId: w.i.kp || undefined, imdb: w.x.k, kind: type,
-      why: await ruSummary(w.i.wiki), url: httpUrl(w.i.wiki), src: 'Cinemeta, Кинопоиск, Википедия (CC BY-SA)', score: Math.round(w.score * 100) / 100 }];
+      why: (await ruSummary(w.i.wiki)) || (w.i.desc ? w.i.desc[0].toUpperCase() + w.i.desc.slice(1) + '.' : ''), url: httpUrl(w.i.wiki), src: 'Cinemeta, Кинопоиск, Википедия (CC BY-SA)', score: Math.round(w.score * 100) / 100 }];
   }
   throw new (exhausted ? Exhausted : Error)('нет подходящих в каталоге Cinemeta' + (lastErr ? ' (' + lastErr + ')' : ''));
 }
