@@ -12,6 +12,7 @@
    • Любой упавший источник не ломает сборку: он помечается в sources.
    ===================================================================== */
 import fs from 'node:fs/promises';
+import BLOCK from '../blocklist.js';       // тематический фильтр «без военного конфликта» (общий с приложением)
 import { TOPICS } from './curriculum.mjs';   // годовая программа: 360 тем
 import { WORDS } from './words.mjs';         // 490 слов для «Слова дня»
 import path from 'node:path';
@@ -157,7 +158,7 @@ const RUSSIA = /росси|(^|[^а-яё])рф([^а-яё]|$)|москв|крем�
 const DISCOVERY = /научн\w* открыти|открыти\w* (в области|учён|ученых|физик|астроном|биолог|химик|генетик)|(сделал|совершил)\w* открыти|учён|учен(ые|ых|ым|ыми|ого)|физик|химик[аиов]|биолог|астроном|генетик|изобрет|нобелев|прорыв в|искусственн\w* интеллект|нейросет|(^|[^а-яё])ии([^а-яё]|$)|архимед|ньютон|менделеев|радио|телескоп|космическ|квантов|днк|геном|вакцин|breakthrough|discover|invent|scientist|researchers|newton|archimedes|artificial intelligence|\bAI\b/i; // «открыт» отдельно НЕ берём: цепляет «открытая площадка», «открыли памятник»
 const CLICKBAIT = /(^|[^а-яё])шок|сенсаци|не поверите|won't believe|you won.t believe/i;
 /* Для новостей допускаем политику и ЧП, отсекаем откровенное, оскорбления по национальности и темы самоубийств */
-const newsOk = t => { const x = yo(t); return !BANNED[0].test(x) && !BANNED[1].test(x) && !/суицид|самоубий|педофил/.test(x); };
+const newsOk = t => { const x = yo(t); return !BANNED[0].test(x) && !BANNED[1].test(x) && !/суицид|самоубий|педофил/.test(x) && !BLOCK.test(t); };   // новости о военном конфликте не берём ни с какой стороны
 async function buildNews(seen) {
   const all = [];
   await Promise.all(FEEDS.map(async f => { try { parseRss(await getTextAuto(f.u)).slice(0, f.big ? 30 : 15).forEach(x => all.push({ ...x, title: x.title.split(' // ')[0].trim(), src: f.n, cat: f.cat, w: f.w, lang: f.lang })); report['feed:' + f.n] = 'ok'; } catch (e) { report['feed:' + f.n] = 'fail: ' + e.message; } }));
@@ -227,7 +228,12 @@ async function buildPrompts(seen) {
   const OURS = /teacher|tutor|coach|interview|negotiat|writer|editor|translator|resume|cover letter|debate|speaker|presentation|counsel|therap|motivat|career|essay|storyteller|mentor|public speaking|summar|explain|study|language|lawyer|philosoph|historian|psycholog|friend|dating|relationship|life coach/i; // тематика приложения
   const ranked = rows.map(r => ({ id: 'ac' + jh(r[0]), title: r[0].trim(), text: r[1].trim(), score: scorePrompt(r[1], r[2]) + (OURS.test(r[0] + ' ' + r[1].slice(0, 300)) ? 3 : 0) }))
     .filter(x => x.text.length <= 1200).sort((a, b) => b.score - a.score || a.title.localeCompare(b.title));
-  const fresh = ranked.filter(x => !seen.has(x.id)); // каждый день — лучший из ещё не показанных; повтор только когда каталог исчерпан
+  /* Сначала промпты, полезные для общения, учёбы и работы (около 200 штук, хватает на полгода), затем остальные, кроме заведомо неподходящих */
+  const USEFUL = /(coach|interview|negotiat|debate|speaker|speech|presentation|public speaking|resume|cover letter|career|mentor|teacher|tutor|essay|writing|writer|editor|proofread|summar|explain|study|motivat|therap|counsel|psycholog|relationship|dating|life|habit|productiv|email|feedback|critic|friend|persuasi|storytell|brainstorm|decision|strateg|marketing|sales|advis|consult|plan|learn|teach|socrat|philosoph|question)/i;
+  const BAD = /(bibl|religio|astrolog|tarot|horoscope|dream|character|stand-?up|comedian|poet|rapper|song|lyric|gnomist|tic tac|unit|linux|terminal|console|sql|regex|excel|python|javascript|react|docker|midjourney|prompt generator|dan\b|jailbreak|emoji|translator|pirate|drunk|lunatic|riddle|chess|football|commentator|fancy title|movie|screenwriter|composer|novelist|cyber|fallacy|hypnot|spoken english|position interviewer|plagiar|chinese|turkish|japanese|korean|arabic|spanish|french|german|hindi|english language|to english|inner desire|erotic|summar|fitness|workout|app development|design|generator)/i;
+  const CORE = /coach|interview|negotiat|debate|speak|speech|relationship|friend|feedback|persuasi|counsel|therap|mentor|motivat|socrat|philosoph|life|habit|decision/i; // ближе всего к теме приложения — вперёд
+  const usefulAll = ranked.filter(x => USEFUL.test(x.title) && !BAD.test(x.title)), good = [...usefulAll.filter(x => CORE.test(x.title)), ...usefulAll.filter(x => !CORE.test(x.title))], rest = ranked.filter(x => !BAD.test(x.title) && !good.includes(x));
+  const fresh = [...good, ...rest].filter(x => !seen.has(x.id)); // каждый день — лучший из ещё не показанных; повтор только когда каталог исчерпан
   if (!fresh.length) throw new Exhausted('все промпты каталога уже показывали');
   if (!HAS_LLM) throw new Error('английский промпт не показываем: нужен перевод (ключ GigaChat) — блок скрыт, остаётся русская библиотека');
   const errs = []; let item = null;
@@ -374,7 +380,9 @@ async function ruInfo(ids) {                                   // русские
 }
 async function ruSummary(wikiUrl) {
   const title = decodeURIComponent((wikiUrl.split('/wiki/')[1] || '')).replace(/ /g, '_'); if (!title) return '';
-  try { const sm = await getJSON('https://ru.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(title)); return clip(oneLine(sm.extract || ''), 240); } catch (e) { return ''; }
+  try { const sm = await getJSON('https://ru.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(title)); const t = clip(oneLine(sm.extract || ''), 240); if (t) return t; } catch (e) { /* пробуем запасной способ */ }
+  try { const j = await getJSON('https://ru.wikipedia.org/w/api.php?action=query&prop=extracts&exintro=1&explaintext=1&redirects=1&format=json&formatversion=2&titles=' + encodeURIComponent(title.replace(/_/g, ' ')));
+    return clip(oneLine((((j.query || {}).pages || [])[0] || {}).extract || ''), 240); } catch (e) { return ''; }
 }
 async function buildCinemeta(seen) {
   const type = DAY_OF_YEAR % 4 === 0 ? 'series' : 'movie', minY = type === 'series' ? 1975 : 1950, span = 2025 - minY + 1;
@@ -432,7 +440,7 @@ const MAT = [/х[уy][йеяию]/, /п[иi]зд/, /бля[дт]/, /(^|[^а-я])
 const BANNED = [/жид(ы|ов|ам)?([^а-я]|$)|хач|чурк|хохл|кацап|москал|черномаз/, /порно|минет|оргазм|сперм|изнасил|педофил|инцест|зоофил|некрофил/, /суицид|самоубий|теракт|террор|похорон|погибш/];
 const POLITICS = [/путин|трамп|байден|зеленск|навальн|политик|госдум|депутат|санкци|единорос|коммунист|мобилизац|вторжен|спецоперац|избирател|референдум|выбор(ы|ов|ах|ам)([^а-я]|$)/];
 export const hasMat = t => MAT.some(r => r.test(yo(t)));
-const hasBanned = t => BANNED.some(r => r.test(yo(t))) || (!HUMOR_ALLOW_POLITICS && POLITICS.some(r => r.test(yo(t))));
+const hasBanned = t => BANNED.some(r => r.test(yo(t))) || BLOCK.test(t) || (!HUMOR_ALLOW_POLITICS && POLITICS.some(r => r.test(yo(t))));
 const sentences = t => (t.match(/[.!?…]+(\s|$)/g) || []).length || 1;
 export const jokeOk = (t, maxSent = 6) => t.length >= 40 && t.length <= 500 && sentences(t) <= maxSent && t.split('\n').length <= 8 && !hasMat(t) && !hasBanned(t);
 const htmlToLines = h => decode((h || '').replace(/<!\[CDATA\[|\]\]>/g, '').replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n').replace(/<[^>]+>/g, '')).split('\n').map(l => l.replace(/[ \t\u00a0]+/g, ' ').trim()).filter(Boolean).join('\n');
@@ -520,7 +528,7 @@ async function toRussian(list, kind) {
       const out = (await retry(() => llm(`Переведи на русский язык. ${rules}\nОтветь СТРОГО в таком формате, без пояснений и без кавычек вокруг ответа:\nЗАГОЛОВОК: <перевод заголовка>\nТЕКСТ:\n<перевод текста>\n\nЗАГОЛОВОК: ${it.title}\nТЕКСТ:\n${text}`, 3000))).replace(/```[a-z]*/gi, '').trim();
       const m = out.match(/ЗАГОЛОВОК:\s*([^\n]*)\n+\s*ТЕКСТ:\s*([\s\S]*)$/i);
       if (!m || !m[1].trim() || !m[2].trim()) throw new Error('ответ не в ожидаемом формате');
-      let title = m[1].trim().replace(/^["«»]+|["«»]+$/g, ''), body = m[2].trim();
+      let title = m[1].trim().replace(/^["«»<]+|["«»>]+$/g, ''), body = m[2].trim().replace(/^<[^>\n]{1,60}>[ \t]*\n+/, ''); // модель иногда повторяет строку-образец «<перевод текста>»
       if (kind === 'prompt') {
         ph.forEach((v, i) => { body = body.replace(`⟦${i + 1}⟧`, () => v); });
         if (/⟦\d+⟧/.test(body) || ph.some(v => !body.includes(v))) throw new Error('модель испортила переменные промпта');
@@ -551,7 +559,7 @@ export function parseBlocks(text, heads) {
 }
 const bullets = x => String(x || '').split('\n').map(l => l.replace(/^\s*(?:[-•–—*]|\d+[.)])\s*/, '').trim()).filter(Boolean);
 const oneLine = x => String(x || '').replace(/\s+/g, ' ').trim();
-const safeText = t => !BANNED.slice(0, 2).some(r => r.test(yo(t))) && !hasMat(t);
+const safeText = t => !BANNED.slice(0, 2).some(r => r.test(yo(t))) && !hasMat(t) && !BLOCK.core(t);
 
 /* Разбор промпта: какие приёмы в нём использованы, что улучшить, типичная ошибка, задание — по самому промпту, поэтому каждый день новое */
 async function analyzePrompt(it) {
@@ -581,18 +589,28 @@ ${it.text}`, 1500));
       уроки с оценкой ≥ 8 (лучшие), остальные пишутся заново.
    ===================================================================== */
 const lessonPrompt = t => `Ты — тренер по коммуникации. Составь мини-урок для аудитории 16+ на тему: «${t.topic}» (раздел курса: «${t.block}»).
-Требования: живой разговорный русский; без мата, политики и оскорблений; ситуация и диалог бытовые и правдоподобные; в диалоге 6–10 реплик; разбор — 3–4 пункта, в каждом назван приём и объяснено, почему он работает; задание конкретное, выполнимое сегодня за 5–10 минут; вопросы открытые (начинаются с «Как», «Что», «Почему», «Расскажите…»).
+Правила:
+- Диалог — это ЖИВАЯ СЦЕНА между двумя людьми внутри описанной ситуации (дай героям имена, например Анна и Максим). Нельзя писать разговор О теме урока или об обучении: не начинай со слов «сегодня поговорим», «давайте разберём», «как думаете, стоит ли». Герои просто общаются, а нужный приём виден в их репликах.
+- Реплики короткие, как в жизни. 6–10 реплик по очереди.
+- Разбор: 3–4 пункта. В каждом: какой приём использовал герой, какими словами и почему это сработало. В последнем пункте покажи пару «Слабо: … → Лучше: …».
+- Фразы: 3 короткие готовые фразы, которые человек может взять себе слово в слово.
+- Задание: одно конкретное действие на сегодня с числом или сроком (например, «один раз за день…», «в течение 10 минут…»), которое можно сделать в реальной жизни, а не только записать на бумаге.
+- Живой разговорный русский, вежливо; без мата, политики, оскорблений, сарказма и придуманной статистики. Вопросы открытые (начинаются с «Как», «Что», «Почему», «Расскажите…»).
 Ответь СТРОГО в таком формате, без вступлений и пояснений:
-СИТУАЦИЯ: <1–2 предложения>
+СИТУАЦИЯ: <1–2 предложения: кто, где, что происходит>
 ДИАЛОГ:
-А: <реплика>
-Б: <реплика>
+Анна: <реплика>
+Максим: <реплика>
 (6–10 реплик по очереди)
 РАЗБОР:
-- <приём: почему он работает>
-- <приём: почему он работает>
-- <приём: почему он работает>
-ЗАДАНИЕ: <одно конкретное задание на сегодня>
+- <приём: что сказал герой и почему это сработало>
+- <приём: что сказал герой и почему это сработало>
+- Слабо: «…» → Лучше: «…» (почему лучше)
+ФРАЗЫ:
+- <готовая фраза 1>
+- <готовая фраза 2>
+- <готовая фраза 3>
+ЗАДАНИЕ: <одно конкретное действие на сегодня с числом или сроком>
 ВОПРОСЫ:
 - <открытый вопрос 1>
 - <открытый вопрос 2>
@@ -600,16 +618,19 @@ const lessonPrompt = t => `Ты — тренер по коммуникации. 
 ПРИВЫЧКА: <маленькое действие на 1–2 минуты>
 ВЕЧЕРНИЙ ВОПРОС: <один вопрос для рефлексии вечером>`;
 export function parseLesson(txt) {
-  const b = parseBlocks(txt, ['СИТУАЦИЯ', 'ДИАЛОГ', 'РАЗБОР', 'ЗАДАНИЕ', 'ВОПРОСЫ', 'ПРИВЫЧКА', 'ВЕЧЕРНИЙ ВОПРОС']);
+  const b = parseBlocks(txt, ['СИТУАЦИЯ', 'ДИАЛОГ', 'РАЗБОР', 'ФРАЗЫ', 'ЗАДАНИЕ', 'ВОПРОСЫ', 'ПРИВЫЧКА', 'ВЕЧЕРНИЙ ВОПРОС']);
   const sit = oneLine(b['СИТУАЦИЯ']), dialog = bullets(b['ДИАЛОГ']), breakdown = bullets(b['РАЗБОР']).slice(0, 5), task = oneLine(b['ЗАДАНИЕ']);
-  const questions = bullets(b['ВОПРОСЫ']).slice(0, 3), habit = oneLine(b['ПРИВЫЧКА']), evening = oneLine(b['ВЕЧЕРНИЙ ВОПРОС']);
-  const all = [sit, ...dialog, ...breakdown, task, ...questions, habit, evening].join(' '); const errs = [];
+  const questions = bullets(b['ВОПРОСЫ']).slice(0, 3), habit = oneLine(b['ПРИВЫЧКА']), evening = oneLine(b['ВЕЧЕРНИЙ ВОПРОС']), phrases = bullets(b['ФРАЗЫ']).map(x => x.replace(/^[«"]|[»"]$/g, '')).filter(x => x.length >= 8 && x.length <= 160).slice(0, 4);
+  const all = [sit, ...dialog, ...breakdown, ...phrases, task, ...questions, habit, evening].join(' '); const errs = [];
+  /* «Лекция о теме» вместо живой сцены и задание без срока — брак: пусть модель перепишет */
+  if (dialog.some(l => /сегодня (мы )?(поговорим|обсудим|разберём|разберем)|в этом (уроке|диалоге)|тема (нашего|этого)|давайте (попробуем|обсудим|разберём|разберем)|как думаете, стоит ли/i.test(l))) errs.push('диалог-лекция');
+  if (!/\d|минут|секунд|один раз|каждый|сегодня/i.test(task)) errs.push('задание без срока');
   if (sit.length < 30 || sit.length > 450) errs.push('ситуация'); if (dialog.length < 5) errs.push('диалог'); if (breakdown.length < 3) errs.push('разбор');
   if (task.length < 20 || task.length > 320) errs.push('задание'); if (questions.length < 3) errs.push('вопросы'); if (habit.length < 10) errs.push('привычка'); if (evening.length < 10) errs.push('вечерний вопрос');
   if (cyr(all) < 0.85) errs.push('язык'); if (!safeText(all)) errs.push('запрещённые слова');
-  let q = 0; if (dialog.length >= 6) q += 2; if (breakdown.length >= 3 && breakdown.length <= 5) q += 2; if (questions.length === 3 && questions.every(x => /\?$/.test(x))) q += 1;
+  let q = 0; if (phrases.length >= 3) q += 1; if (dialog.length >= 6) q += 2; if (breakdown.length >= 3 && breakdown.length <= 5) q += 2; if (questions.length === 3 && questions.every(x => /\?$/.test(x))) q += 1;
   if (/\d|минут|секунд/.test(task)) q += 2; if (habit.length <= 140) q += 1; if (/\?$/.test(evening)) q += 1; if (sit.length >= 60) q += 1;
-  return { ok: errs.length === 0, errs, lesson: { situation: sit, dialog: dialog.slice(0, 12), breakdown, task, questions, habit, evening, quality: q } };
+  return { ok: errs.length === 0, errs, lesson: { situation: sit, dialog: dialog.slice(0, 12), breakdown, phrases, task, questions, habit, evening, quality: q } };
 }
 async function readArchive(date) { try { return JSON.parse(await fs.readFile(path.join(ROOT, 'archive', date + '.json'), 'utf8')); } catch (e) { return null; } }
 async function buildLesson() {
