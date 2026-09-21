@@ -172,8 +172,8 @@ async function buildNews(seen) {
   const en = out.filter(x => x.lang === 'en');
   if (en.length && HAS_LLM) { try {
     const tr = await toRussian(en.map(x => ({ title: x.title, text: clip(x.desc, 220) })), 'news');
-    en.forEach((x, i) => { if (cyr(tr[i].title) >= 0.5) { x.orig = x.title; x.title = tr[i].title; x.desc = tr[i].text; x.tr = LLM_NAME; x.lang = 'ru'; } });
-    const n = en.filter(x => x.tr).length; report['news:translate'] = n === en.length ? `ok (переведено ${n})` : `переведено ${n} из ${en.length}, остальные заменены русскими`;
+    en.forEach((x, i) => { if (tr[i] && cyr(tr[i].title) >= 0.5) { x.orig = x.title; x.title = tr[i].title; x.desc = tr[i].text; x.tr = LLM_NAME; x.lang = 'ru'; } });
+    const n = en.filter(x => x.tr).length; report['news:translate'] = n === en.length ? `ok (переведено ${n})` : `переведено ${n} из ${en.length}, остальные заменены русскими` + (tr.errors.length ? ' (' + tr.errors[0] + ')' : '');
   } catch (e) { report['news:translate'] = 'fail: ' + e.message; } }
   const kept = out.filter(x => x.lang === 'ru');
   if (kept.length < out.length) out = choose(sorted.filter(x => x.lang === 'ru' && !kept.includes(x)), kept);
@@ -206,7 +206,8 @@ async function buildPrompts(seen) {
   let items = pickd.map(x => ({ id: 'ac' + norm(x.title).replace(/ /g, '').slice(0, 20), cat: 'каталог', title: x.title, text: x.text, src: 'Awesome ChatGPT Prompts (CC0)', lang: 'en', score: x.score }));
   if (HAS_LLM && items.length) { try {
     const tr = await toRussian(items.map(i => ({ title: i.title, text: i.text })), 'prompt');
-    items = items.map((it, i) => (cyr(tr[i].title) >= 0.5 && cyr(tr[i].text) >= 0.4) ? { ...it, title: tr[i].title, text: tr[i].text, lang: 'ru', src: it.src + ', перевод: ' + LLM_NAME } : it);
+    items = items.map((it, i) => (tr[i] && cyr(tr[i].title) >= 0.5 && cyr(tr[i].text) >= 0.4) ? { ...it, title: tr[i].title, text: tr[i].text, lang: 'ru', src: it.src + ', перевод: ' + LLM_NAME } : it);
+    report['prompts:translate'] = `переведено ${items.filter(x => x.lang === 'ru').length} из ${items.length}` + (tr.errors.length ? ' (' + tr.errors[0] + ')' : '');
   } catch (e) { report['prompts:translate'] = 'fail: ' + e.message; } }
   items = items.filter(x => x.lang === 'ru');
   if (!items.length) throw new Error('английский промпт не показываем: нужен перевод (ключ GigaChat) — блок скрыт, остаётся русская библиотека');
@@ -257,7 +258,7 @@ async function buildBooks(seen) {
   if (lg === 'eng') { // русскоязычных книг с оценками нет: берём зарубежную только с русским названием
     if (!HAS_LLM) throw new Error('русских книг с оценками нет, а для перевода названий нужен ключ GigaChat — остаётся русская база');
     const tr = await toRussian(pick.map(b => ({ title: b.t, text: b.a })), 'book');
-    pick = pick.map((b, i) => cyr(tr[i].title) >= 0.5 ? { ...b, orig: b.t, t: tr[i].title, a: tr[i].text && cyr(tr[i].text) >= 0.5 ? tr[i].text : b.a } : null).filter(Boolean);
+    pick = pick.map((b, i) => tr[i] && cyr(tr[i].title) >= 0.5 ? { ...b, orig: b.t, t: tr[i].title, a: tr[i].text && cyr(tr[i].text) >= 0.5 ? tr[i].text : b.a } : null).filter(Boolean);
     if (!pick.length) throw new Error('перевод названия не удался');
   }
   return pick;
@@ -360,13 +361,22 @@ const llm = (prompt, max) => (GIGA ? gigachat(prompt, max) : claude(prompt, max)
 
 /* ---------- Перевод на русский: всё, что показывается в приложении, должно быть по-русски ---------- */
 export const cyr = t => { const l = (t.match(/[a-zа-яё]/gi) || []).length; return l ? (t.match(/[а-яё]/gi) || []).length / l : 1; }; // доля кириллицы среди букв
+/* Переводим по одному материалу за запрос и в простом текстовом формате (не JSON): у моделей JSON с длинными текстами часто ломается.
+   Возвращает массив той же длины: {title,text} или null, если этот материал перевести не удалось (причины — в .errors). */
 async function toRussian(list, kind) {
-  const rules = { news: 'Это новости: переводи точно, без оценок и добавлений; имена, числа, названия организаций и стран сохраняй.',
-    prompt: 'Это промпты для нейросети: сохрани структуру, списки и все плейсхолдеры в [скобках], {фигурных скобках} и ${...} без изменений.',
-    book: 'Это названия книг (title) и имена авторов (text): название переведи на русский (если есть устоявшийся русский перевод — используй его), имя автора запиши кириллицей.' }[kind];
-  const arr = JSON.parse(extractJSON(await llm(`Переведи на русский язык. ${rules} Ничего не объясняй. Верни ТОЛЬКО JSON-массив [{"title":"...","text":"..."}] того же размера и в том же порядке.\n\n${JSON.stringify(list)}`, 4000)));
-  if (!Array.isArray(arr) || arr.length !== list.length) throw new Error('перевод вернул неверный формат');
-  return arr.map(x => ({ title: String((x && x.title) || ''), text: String((x && x.text) || '') }));
+  const rules = { news: 'Это новость: переводи точно, без оценок и добавлений; имена, числа, названия организаций и стран сохраняй.',
+    prompt: 'Это промпт для нейросети: сохрани структуру, списки и все плейсхолдеры в [скобках], {фигурных скобках} и ${...} без изменений.',
+    book: 'Это название книги (заголовок) и имя автора (текст): название переведи на русский (если есть устоявшийся русский перевод — используй его), имя автора запиши кириллицей.' }[kind];
+  const res = []; res.errors = [];
+  for (const it of list) {
+    try {
+      const out = (await llm(`Переведи на русский язык. ${rules}\nОтветь СТРОГО в таком формате, без пояснений и без кавычек вокруг ответа:\nЗАГОЛОВОК: <перевод заголовка>\nТЕКСТ:\n<перевод текста>\n\nЗАГОЛОВОК: ${it.title}\nТЕКСТ:\n${it.text}`, 3000)).replace(/```[a-z]*/gi, '').trim();
+      const m = out.match(/ЗАГОЛОВОК:\s*([^\n]*)\n+\s*ТЕКСТ:\s*([\s\S]*)$/i);
+      if (!m || !m[1].trim() || !m[2].trim()) throw new Error('ответ не в ожидаемом формате');
+      res.push({ title: m[1].trim().replace(/^["«»]+|["«»]+$/g, ''), text: m[2].trim() });
+    } catch (e) { res.push(null); res.errors.push(e.message); }
+  }
+  return res;
 }
 const extractJSON = t => { const a = t.search(/[\[{]/); const b = Math.max(t.lastIndexOf(']'), t.lastIndexOf('}')); if (a < 0 || b < a) throw new Error('JSON не найден'); return t.slice(a, b + 1); };
 
