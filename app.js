@@ -220,7 +220,7 @@ const BODY = {
   book() {
     const b = mix('books', D.books, 1)[0]; const q = encodeURIComponent(b.t + ' ' + b.a);
     const aff = CFG.AFF.litres ? `&lfrom=${encodeURIComponent(CFG.AFF.litres)}` : '';
-    return `<h3>${esc(b.t)}</h3><p class="muted">${esc(b.a)}${b.y ? ', ' + esc(b.y) : ''}</p>${b.why ? `<p>${esc(b.why)}</p>` : ''}${b.rating ? `<p>Рейтинг Open Library: <b>${esc(b.rating)}</b> из 5 (${esc(b.count)} оценок)</p>` : ''}
+    return `<h3>${esc(b.t)}</h3><p class="muted">${esc(b.a)}${b.y ? ', ' + esc(b.y) : ''}</p>${b.orig ? `<p class="muted"><small>Оригинал: ${esc(b.orig)}</small></p>` : ''}${b.why ? `<p>${esc(b.why)}</p>` : ''}${b.rating ? `<p>Рейтинг Open Library: <b>${esc(b.rating)}</b> из 5 (${esc(b.count)} оценок)</p>` : ''}
       <div class="row"><a class="btn ghost sm" target="_blank" rel="noopener sponsored" href="https://www.litres.ru/search/?q=${q}${aff}">Найти в ЛитРес</a>
       <a class="btn ghost sm" target="_blank" rel="noopener sponsored" href="https://www.ozon.ru/search/?text=${q}">Найти на Ozon</a></div>
       <p class="muted"><small>${CFG.AFF.litres ? 'Партнёрский материал: ссылка может содержать партнёрский идентификатор.' : 'Это обычные ссылки-поиск, без партнёрских идентификаторов.'}</small></p>`;
@@ -309,7 +309,7 @@ async function loadNews(date) {
   if (dailyOk() && Array.isArray(DAILY.news) && DAILY.news.length) {
     if (!box()) return;
     box().innerHTML = DAILY.news.map(x => `<div class="item"><h3><a href="${esc(x.l)}" target="_blank" rel="noopener">${esc(x.t)}</a></h3><p>${esc(x.s)}</p>
-      <p class="meta"><span class="tag">${esc(x.src)}</span><span class="tag">${esc(x.cat)}</span>${(x.tags || []).map(t => `<span class="tag amber">${esc(t)}</span>`).join('')}${x.lang === 'en' ? '<span class="tag">EN</span>' : ''}<small class="muted">рейтинг подборки: ${esc(x.score)}</small></p></div>`).join('')
+      ${x.orig ? `<p class="meta muted"><small>Оригинал: ${esc(x.orig)}</small></p>` : ''}<p class="meta"><span class="tag">${esc(x.src)}</span><span class="tag">${esc(x.cat)}</span>${(x.tags || []).map(t => `<span class="tag amber">${esc(t)}</span>`).join('')}${x.tr ? `<span class="tag">перевод: ${esc(x.tr)}</span>` : ''}${x.lang === 'en' ? '<span class="tag">EN</span>' : ''}<small class="muted">рейтинг подборки: ${esc(x.score)}</small></p></div>`).join('')
       + '<p class="muted"><small>Подборка собрана автоматически из изданий и агентств и отранжирована по свежести, авторитету источника и совпадению тем в разных изданиях. Приоритет у новостей о России и об открытиях. Заголовок и анонс — из ленты издания; по политическим событиям сверяйтесь с несколькими источниками.</small></p>';
     return;
   }
