@@ -1,37 +1,38 @@
 {
  "v": 1,
  "date": "2026-09-21",
- "generated": "2026-09-21T12:10:19.044Z",
+ "generated": "2026-09-21T12:40:30.084Z",
  "sources": {
   "films": "fail: ключ TMDB_API_KEY не задан — раздел остаётся на локальной базе",
+  "feed:N+1": "ok",
   "feed:Nature": "ok",
   "feed:BBC Science": "ok",
-  "feed:Science News": "ok",
   "feed:Ars Technica": "ok",
   "feed:BBC Sport": "ok",
-  "feed:N+1": "ok",
-  "feed:Naked Science": "ok",
-  "feed:Элементы": "ok",
-  "quotes": "ok",
+  "feed:Science News": "ok",
   "feed:Хабр": "ok",
-  "feed:ТАСС": "ok",
-  "feed:BBC World": "ok",
-  "feed:The Guardian World": "ok",
-  "feed:Al Jazeera": "ok",
-  "prompts": "ok",
+  "feed:Элементы": "ok",
+  "feed:Naked Science": "ok",
+  "quotes": "ok",
   "feed:РИА Новости": "ok",
+  "feed:ТАСС": "ok",
+  "feed:The Guardian World": "ok",
+  "feed:BBC World": "ok",
+  "feed:Al Jazeera": "ok",
   "feed:The Guardian Culture": "ok",
-  "books": "ok",
   "word": "ok",
   "feed:Интерфакс": "ok",
+  "feed:РБК": "ok",
   "feed:anekdot.ru десятка": "ok (10)",
   "feed:anekdot.ru лучшие": "ok (50)",
   "humor:anekdot.ru": "кандидатов 60, прошло фильтр 54",
   "humor": "ok",
   "feed:Коммерсантъ": "ok",
-  "feed:РБК": "ok",
   "feed:Lenta.ru": "ok",
-  "news": "ok"
+  "news": "ok",
+  "prompts:translate": "fail: Expected ',' or '}' after property value in JSON at position 36",
+  "prompts": "fail: английский промпт не показываем: нужен перевод (ключ GigaChat) — блок скрыт, остаётся русская библиотека",
+  "books": "fail: fetch failed"
  },
  "scoring": "Цитаты: источник+длина+раздел; новости: вес источника+свежесть+совпадение тем; промпты: роль+длина+ограничения; книги: оценка×ln(1+голоса); фильмы: оценка×ln(1+голоса).",
  "quotes": [
@@ -62,6 +63,20 @@
  ],
  "news": [
   {
+   "t": "Мусорная площадка горит в подмосковном Щелкове на 5 тыс. кв. метров",
+   "s": "Крупный пожар на мусорной площадке тушат в подмосковном городе Щелково, сообщила пресс-служба регионального главка МЧС РФ в понедельник.\"Поступило сообщение о горении мусора на открытой площадке в городском округе…",
+   "l": "https://www.interfax.ru/russia/1117493",
+   "src": "Интерфакс",
+   "cat": "новости",
+   "lang": "ru",
+   "d": "Mon, 21 Sep 2026",
+   "score": 14,
+   "tags": [
+    "Россия",
+    "открытия и наука"
+   ]
+  },
+  {
    "t": "Российские ученые нашли способ остановить брожение комбучи без потери витаминов",
    "s": "Ежегодно миллионы людей во всем мире покупают или готовят дома комбучу — ферментированный живой напиток на основе чайного гриба. Его ценят за пробиотики, витамины и антиоксиданты. Только в России за последние пять лет…",
    "l": "https://naked-science.ru/article/column/brozhenie-kombuchi-bez-poteri-vitaminov",
@@ -69,30 +84,16 @@
    "cat": "наука",
    "lang": "ru",
    "d": "Mon, 21 Sep 2026",
-   "score": 13.83,
+   "score": 12.33,
    "tags": [
     "Россия",
     "открытия и наука"
    ]
   },
   {
-   "t": "Развитие ИИ в закупочной деятельности обсудили на форуме в Москве",
-   "s": "",
-   "l": "https://ria.ru/20260921/ii-2119272765.html",
-   "src": "РИА Новости",
-   "cat": "новости",
-   "lang": "ru",
-   "d": "Mon, 21 Sep 2026",
-   "score": 10.89,
-   "tags": [
-    "Россия",
-    "открытия и наука"
-   ]
-  },
-  {
-   "t": "Собянин: выборы в Москве прошли беспрецедентно активно",
-   "s": "Мэр поблагодарил москвичей, посетивших выборы, за активную гражданскую позицию",
-   "l": "https://tass.ru/politika/28135985",
+   "t": "Собянин: Москва в течение года помогла в разных формах 60 регионам РФ",
+   "s": "Мэр отметил, что столица занимается вопросами, связанными с поддержкой участников СВО и их семей",
+   "l": "https://tass.ru/obschestvo/28136081",
    "src": "ТАСС",
    "cat": "новости",
    "lang": "ru",
@@ -103,9 +104,9 @@
    ]
   },
   {
-   "t": "Лидер АдГ после провала ХДС на выборах призвал Мерца поехать в РФ ради мира",
-   "s": "Немцы имеют право и прежде всего желание, чтобы в ФРГ проводилась другая политика, в том числе в сфере мирного урегулирования и дипломатии, считает Тино Хрупалла",
-   "l": "https://tass.ru/mezhdunarodnaya-panorama/28135943",
+   "t": "\"Единая Россия\" лидирует на выборах в Кузбассе с 69,27%",
+   "s": "Второе место занимает ЛДПР с 9,48%",
+   "l": "https://tass.ru/politika/28136043",
    "src": "ТАСС",
    "cat": "новости",
    "lang": "ru",
@@ -116,9 +117,9 @@
    ]
   },
   {
-   "t": "Сборная России выиграла общекомандный зачет Кубка мира по самбо",
-   "s": "Сборная России по самбо стала победителем общекомандного зачета на Кубке мира по самбо в Душанбе.",
-   "l": "https://www.sport-interfax.ru/1117492",
+   "t": "Трамп считает, что Россия утратила контроль над производством дизеля",
+   "s": "Президент США Дональд Трамп выразил в понедельник мнение, что Россия потеряла контроль над своим производством дизеля.\"Россия, к сожалению, утратила контроль над своим производством дизеля из-за войны с Украиной\", -…",
+   "l": "https://www.interfax.ru/world/1117499",
    "src": "Интерфакс",
    "cat": "новости",
    "lang": "ru",
@@ -129,9 +130,9 @@
    ]
   },
   {
-   "t": "Выдворенного из России блогера Некоглая задержали в Молдавии за организацию наркопритона // В Молдавии сообщили о задержании блогера Некоглая по делу о торговле наркотиками",
-   "s": "Полиция Молдавии задержала блогера Некоглая (Николай Лебедев) по подозрению в распространении наркотиков, в том числе среди несовершеннолетних. Также задержана жена блогера, сообщает pulsmedia.md со ссылкой на источники.",
-   "l": "https://www.kommersant.ru/doc/8971559",
+   "t": "Замглавы Минфина Сазанов: решение по налогу на сверхприбыль компаний пока не принято",
+   "s": "Минфин России пока не принял решение о б использовании механизма налога на сверхприбыль компаний (windfall tax). Об этом журналистам на Московском финансовом форуме сообщил замминистра финансов Алексей Сазанов.",
+   "l": "https://www.kommersant.ru/doc/8971577",
    "src": "Коммерсантъ",
    "cat": "новости",
    "lang": "ru",
@@ -142,35 +143,7 @@
    ]
   }
  ],
- "prompts": [
-  {
-   "id": "acalgorithmquickguide",
-   "cat": "каталог",
-   "title": "Algorithm Quick Guide",
-   "text": "Act as an Algorithm Expert. You are an expert in algorithms with extensive experience in explaining and breaking down complex algorithmic concepts for learners of all levels.\nYour task is to provide clear and concise explanations of various algorithms.\nYou will:\n- Summarize the main idea of the algorithm.\n- Explain the steps involved in the algorithm.\n- Discuss the complexity and efficiency.\n- Provide examples or visual aids if necessary.\nRules:\n- Use simple language to ensure understanding.\n- Avoid unnecessary jargon.\n- Tailor explanations to the user's level of expertise (beginner, intermediate, advanced).\nVariables:\n- ${algorithmName} - The name of the algorithm to explain\n- ${complexityLevel:beginner} - The level of complexity to tailor the explanation",
-   "src": "Awesome ChatGPT Prompts (CC0)",
-   "lang": "en",
-   "score": 7
-  },
-  {
-   "id": "acangulardirectivegene",
-   "cat": "каталог",
-   "title": "Angular Directive Generator",
-   "text": "You are an expert Angular developer. Generate a complete Angular directive based on the following description:\n\nDirective Description: ${description}\nDirective Type: [structural | attribute]\nSelector Name: [e.g. appHighlight, *appIf]\nInputs needed: [list any @Input() properties]\nTarget element behavior: ${what_should_happen_to_the_host_element}\n\nGenerate:\n1. The full directive TypeScript class with proper decorators\n2. Any required imports\n3. Host bindings or listeners if needed\n4. A usage example in a template\n5. A brief explanation of how it works\n\nUse Angular 17+ standalone directive syntax. Follow Angular style guide conventions.",
-   "src": "Awesome ChatGPT Prompts (CC0)",
-   "lang": "en",
-   "score": 7
-  },
-  {
-   "id": "acanimatedweatherradar",
-   "cat": "каталог",
-   "title": "Animated Weather Radar Map: Brescia Storm",
-   "text": "Act as a meteorological video producer. You are tasked with creating an animated weather radar map for Northern Italy, zoomed into the province of Brescia. Your video should include:\n- A clearly labeled map with Inzino on the west and Sarezzo on the east.\n- A swirling hurricane-like storm system with rotating cloud bands.\n- Heavy rain colors represented in blue, green, yellow, and red on the radar.\n- Motion arrows indicating the storm's eastward movement from Inzino to Sarezzo.\n- Realistic meteorological radar textures and satellite overlay.\n- Dramatic yet professional TV weather broadcast graphics.\n- Smooth animation frames for seamless viewing.\n\nYour task is to ensure that the animation is both informative and visually engaging, suitable for a TV weather forecast.",
-   "src": "Awesome ChatGPT Prompts (CC0)",
-   "lang": "en",
-   "score": 7
-  }
- ],
+ "prompts": [],
  "words": [
   {
    "w": "Бережливость",
@@ -181,18 +154,7 @@
    "url": "https://ru.wiktionary.org/wiki/%D0%B1%D0%B5%D1%80%D0%B5%D0%B6%D0%BB%D0%B8%D0%B2%D0%BE%D1%81%D1%82%D1%8C"
   }
  ],
- "books": [
-  {
-   "t": "Le petit prince",
-   "a": "Antoine de Saint-Exupéry",
-   "y": 1943,
-   "rating": 4.37,
-   "count": 245,
-   "url": "https://openlibrary.org/works/OL10263W",
-   "score": 24.04,
-   "why": ""
-  }
- ],
+ "books": [],
  "films": [],
  "jokes": [
   {
