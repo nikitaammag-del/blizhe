@@ -123,7 +123,9 @@ function snapSet(date, key, val) { (S.snap[date] ||= {})[key] = val; Object.keys
 const snapGet = (date, key) => S.snap[date] && S.snap[date][key];
 const stripHtml = h => { const t = document.createElement('div'); t.innerHTML = h || ''; return (t.textContent || '').replace(/\s+/g, ' ').trim(); };
 const clip = (s, n) => s.length <= n ? s : s.slice(0, n).replace(/\s+\S*$/, '') + '…';
-const kindLab = k => k === 'orig' ? 'Оригинал от «Ближе к людям»' : k === 'ai' ? 'Шутка нейросети' : 'Проверенный анекдот';
+const kindLab = k => k === 'orig' ? 'Оригинал от «Ближе к людям»' : k === 'ai' ? 'Шутка нейросети' : k === 'anekdot' ? 'Анекдоты из России' : 'Проверенный анекдот';
+/* Приоритетные темы для событий дня: Россия, наука, открытия, радио, ИИ */
+const TOPIC = /росси|архимед|ньютон|открыт|радио|попов|искусственн|нейросет|(^|[^а-яё])ии([^а-яё]|$)/i;
 const passes = t => !D.stopWords.some(w => t.toLowerCase().includes(w)); // фильтр внешних материалов
 
 /* =====================================================================
@@ -179,9 +181,9 @@ const BODY = {
     const js = mix('jokes', D.jokes.filter(j => passes(j.t)), 2);
     const st = mix('stories', D.stories.filter(j => passes(j.t)), 1)[0];
     const lab = k => kindLab(k);
-    let h = js.map(j => { const it = mk('joke', j.t, lab(j.kind)); return `<div class="item"><p>${esc(j.t)}</p><div class="row"><span class="tag ${j.kind === 'orig' ? 'amber' : ''}">${lab(j.kind)}</span>${actions(it)}</div></div>`; }).join('');
-    if (st) { const it = mk('joke', st.t, 'Смешная история дня'); h += `<div class="item"><h3>Смешная история дня</h3><p>${esc(st.t)}</p><div class="row"><span class="tag amber">${lab(st.kind)}</span>${actions(it)}</div></div>`; }
-    return h + '<p class="muted"><small>Оригинальные шутки прошли внутренний фильтр (коротко, без политики, пошлости и оскорблений), но живую реакцию читателей мы проверить не можем.</small></p>';
+    let h = js.map(j => { const it = mk('joke', j.t, lab(j.kind)); return `<div class="item"><p style="white-space:pre-line">${esc(j.t)}</p><div class="row"><span class="tag ${j.kind === 'orig' ? 'amber' : ''}">${lab(j.kind)}</span>${j.url ? `<a class="btn ghost sm" href="${esc(j.url)}" target="_blank" rel="noopener">Источник: anekdot.ru</a>` : ''}${actions(it)}</div></div>`; }).join('');
+    if (st) { const it = mk('joke', st.t, 'Смешная история дня'); h += `<div class="item"><h3>Смешная история дня</h3><p style="white-space:pre-line">${esc(st.t)}</p><div class="row"><span class="tag amber">${lab(st.kind)}</span>${actions(it)}</div></div>`; }
+    return h + '<p class="muted"><small>Анекдоты берутся из официальных лент «Анекдоты из России» (anekdot.ru), права на тексты принадлежат их владельцам. Фильтр убирает мат, оскорбления и политику; вкусы у людей разные.</small></p>';
   },
   news() { return `<div id="news-body">${skel()}</div>`; },
   prompt() {
@@ -280,7 +282,8 @@ async function loadEvents(date) {
     const j = await fetchJSON(`https://ru.wikipedia.org/api/rest_v1/feed/onthisday/events/${m}/${d}`);
     list = (j.events || []).filter(e => e.text && e.year).map(e => { const p = (e.pages || [])[0] || {};
       return { y: e.year, e: e.text, ex: p.extract || '', url: p.content_urls && p.content_urls.desktop && p.content_urls.desktop.page, w: (e.pages || []).length }; });
-    list = list.sort((a, b) => b.w - a.w).slice(0, 3).sort((a, b) => a.y - b.y);
+    const sc = x => x.w + (TOPIC.test(x.e) ? 3 : 0); // приоритетные темы выше в списке
+    list = list.sort((a, b) => sc(b) - sc(a)).slice(0, 3).sort((a, b) => a.y - b.y);
     if (!list.length) throw new Error('empty');
     snapSet(date, 'events', list);
   } catch (e) {
@@ -306,8 +309,8 @@ async function loadNews(date) {
   if (dailyOk() && Array.isArray(DAILY.news) && DAILY.news.length) {
     if (!box()) return;
     box().innerHTML = DAILY.news.map(x => `<div class="item"><h3><a href="${esc(x.l)}" target="_blank" rel="noopener">${esc(x.t)}</a></h3><p>${esc(x.s)}</p>
-      <p class="meta"><span class="tag">${esc(x.src)}</span><span class="tag">${esc(x.cat)}</span>${x.lang === 'en' ? '<span class="tag">EN</span>' : ''}<small class="muted">рейтинг подборки: ${esc(x.score)}</small></p></div>`).join('')
-      + '<p class="muted"><small>Подборка собрана автоматически из журналов и изданий и отранжирована по свежести, авторитету источника и совпадению тем. Заголовок и анонс — из ленты издания.</small></p>';
+      <p class="meta"><span class="tag">${esc(x.src)}</span><span class="tag">${esc(x.cat)}</span>${(x.tags || []).map(t => `<span class="tag amber">${esc(t)}</span>`).join('')}${x.lang === 'en' ? '<span class="tag">EN</span>' : ''}<small class="muted">рейтинг подборки: ${esc(x.score)}</small></p></div>`).join('')
+      + '<p class="muted"><small>Подборка собрана автоматически из изданий и агентств и отранжирована по свежести, авторитету источника и совпадению тем в разных изданиях. Приоритет у новостей о России и об открытиях. Заголовок и анонс — из ленты издания; по политическим событиям сверяйтесь с несколькими источниками.</small></p>';
     return;
   }
   const res = await Promise.allSettled(FEEDS.map(f => fetchJSON('https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent(f.u))));
