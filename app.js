@@ -21,6 +21,27 @@ const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 /* Ссылка допускается только http(s): защита от javascript:-ссылок из внешних данных */
 const safeUrl = u => /^https?:\/\/[^\s"'<>]+$/i.test(String(u || '').trim()) ? String(u).trim() : '#';
+/* Картинки: только с Викисклада (свободные лицензии), с подписью и ссылкой на страницу файла */
+const safeImg = u => (/^https:\/\/upload\.wikimedia\.org\/wikipedia\/commons\/[^\s"'<>]+$/.test(String(u || '').trim()) ? String(u).trim() : '');
+const commonsPage = u => { const m = String(u || '').match(/\/wikipedia\/commons\/(?:thumb\/)?[0-9a-f]\/[0-9a-f]{2}\/([^/]+)/); return m ? 'https://commons.wikimedia.org/wiki/File:' + m[1] : ''; };
+const figCredit = u => (commonsPage(u) ? `<small class="muted">Фото: <a href="${esc(commonsPage(u))}" target="_blank" rel="noopener">Wikimedia Commons</a> (автор и лицензия — по ссылке)</small>` : '<small class="muted">Фото: Wikimedia Commons</small>');
+/* Диалог урока в виде переписки: реплики «Имя: текст» — пузырями слева и справа */
+function chatHtml(lines) {
+  const msgs = [];
+  (lines || []).forEach(l => { const m = String(l).match(/^([A-Za-zА-Яа-яЁё][A-Za-zА-Яа-яЁё .'-]{0,24}?):\s*(.+)$/);
+    if (m) msgs.push({ who: m[1].trim(), text: m[2].trim() }); else if (msgs.length) msgs[msgs.length - 1].text += ' ' + String(l).trim(); else msgs.push({ who: '', text: String(l).trim() }); });
+  const first = msgs.length ? msgs[0].who : '';
+  return `<div class="chat" role="list">${msgs.map(m => `<div class="bub ${m.who && m.who !== first ? 'r' : 'l'}" role="listitem">${m.who ? `<b>${esc(m.who)}</b>` : ''}${esc(m.text)}</div>`).join('')}</div>`;
+}
+/* Разбор урока: пункты списком, а «Слабо: … → Лучше: …» — двумя карточками рядом по смыслу */
+const WB_RE = /Слабо:?\s*[«"]?(.+?)[»"]?\s*(?:→|->|—>|➜)\s*Лучше:?\s*[«"]?(.+?)[»"]?\s*(?:\((.+)\))?\.?$/i;
+function breakdownHtml(items) {
+  let html = '', list = '';
+  const flush = () => { if (list) { html += `<ul class="clean">${list}</ul>`; list = ''; } };
+  (items || []).forEach(x => { const m = String(x).match(WB_RE);
+    if (m) { flush(); html += `<div class="wb"><div class="weak"><small>Слабо</small>${esc(m[1])}</div><div class="better"><small>Лучше</small>${esc(m[2])}${m[3] ? `<span class="why">Почему: ${esc(m[3])}</span>` : ''}</div></div>`; } else list += `<li>${esc(x)}</li>`; });
+  flush(); return html;
+}
 /* SVG-иконки (вместо эмодзи: одинаково выглядят на любом телефоне) */
 const ICONS = {
   today: '<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>',
@@ -194,9 +215,11 @@ const BODY = {
     return list.map(q => {
       const it = mk('quote', `«${q.t}» — ${q.a}${q.dis ? ' (приписывается)' : ''}`, q.src);
       const anniv = q.bd === md ? `Сегодня день рождения: ${q.a}.` : q.dd === md ? `Сегодня день памяти: ${q.a}.` : '';
-      return `<div class="item"><p class="quote">«${esc(q.t)}»</p>
+      const pic = q.img && safeImg(q.img.src) ? `<img class="portrait" src="${esc(safeImg(q.img.src))}" alt="Портрет: ${esc(q.a)}" loading="lazy" width="84" height="84" onerror="this.remove()">` : '';
+      return `<div class="item">${pic}<p class="quote">«${esc(q.t)}»</p>
         <p class="quote-by">${esc(q.a)}${q.dis ? ' <span class="tag amber">приписывается</span>' : ''}</p>
         <p class="meta muted"><small>Источник: ${esc(q.src)}${q.url ? ` · <a href="${esc(safeUrl(q.url))}" target="_blank" rel="noopener">страница автора</a>` : ''}</small></p>
+        ${pic ? `<p class="meta">${figCredit(q.img.src)}</p>` : ''}
         ${anniv ? `<p><span class="tag amber">${esc(anniv)}</span></p>` : ''}
         ${q.note ? `<p>${esc(q.note)}</p>` : ''}
         <div class="row">${actions(it)}<button class="iconbtn" data-act="share" data-id="${it.id}" aria-label="Поделиться карточкой">${ic('share')}</button></div></div>`;
@@ -294,9 +317,10 @@ const BODY = {
 };
 function lessonHtml(L) {
   const stale = DAILY && DAILY.date < viewDate ? '<div class="banner">Свежий урок ещё готовится: показан урок предыдущего дня.</div>' : '';
-  return `${stale}<p class="meta"><span class="tag amber">День ${esc(L.day)} из ${esc(L.of)}</span><span class="tag">${esc(L.block)}</span></p><h3>${esc(L.topic)}</h3>
-    <p>${esc(L.situation)}</p><div class="dialog">${(L.dialog || []).map(x => `<p>${esc(x)}</p>`).join('')}</div>
-    <h3>Разбор</h3><ul class="clean">${(L.breakdown || []).map(x => `<li>${esc(x)}</li>`).join('')}</ul>
+  const il = typeof illusFor === 'function' ? illusFor(L.block) : '';
+  return `${stale}${il ? `<figure class="illus">${il}</figure>` : ''}<p class="meta"><span class="tag amber">День ${esc(L.day)} из ${esc(L.of)}</span><span class="tag">${esc(L.block)}</span></p><h3>${esc(L.topic)}</h3>
+    <p>${esc(L.situation)}</p>${chatHtml(L.dialog)}
+    <h3>Разбор</h3>${breakdownHtml(L.breakdown)}
     ${(L.phrases || []).length ? `<h3>Фразы, которые можно взять</h3><ul class="clean">${L.phrases.map(x => `<li>«${esc(x)}»</li>`).join('')}</ul>` : ''}
     <h3>Вопросы для разговора</h3><ul class="clean">${(L.questions || []).map(x => `<li>${esc(x)}</li>`).join('')}</ul>
     <h3>Задание дня</h3><p>${esc(L.task)}</p>${taskBox(L.task)}
@@ -359,7 +383,8 @@ async function loadEvents(date) {
   try {
     const j = await fetchJSON(`https://ru.wikipedia.org/api/rest_v1/feed/onthisday/events/${m}/${d}`);
     list = (j.events || []).filter(e => e.text && e.year && !blkCore(e.text + ' ' + (((e.pages || [])[0] || {}).extract || ''))).map(e => { const p = (e.pages || [])[0] || {};
-      return { y: e.year, e: e.text, ex: p.extract || '', url: p.content_urls && p.content_urls.desktop && p.content_urls.desktop.page, w: (e.pages || []).length }; });
+      return { y: e.year, e: e.text, ex: p.extract || '', url: p.content_urls && p.content_urls.desktop && p.content_urls.desktop.page, w: (e.pages || []).length,
+        img: !blk(e.text) && p.thumbnail && safeImg(p.thumbnail.source) ? p.thumbnail.source : '' }; }); // фото — только с Викисклада и только к событиям без «военных» слов
     const sc = x => x.w + (TOPIC.test(x.e) ? 3 : 0); // приоритетные темы выше в списке
     list = list.sort((a, b) => sc(b) - sc(a)).slice(0, 3).sort((a, b) => a.y - b.y);
     if (!list.length) throw new Error('empty');
@@ -375,6 +400,7 @@ async function loadEvents(date) {
   box().innerHTML = note + list.map(x => { const it = mk('event', `${x.y}: ${x.e}`, 'Wikipedia');
     return `<div class="item"><p><span class="tag amber">${esc(x.y)}</span>${x.ad ? `<span class="tag">${esc(x.ad.split('-').reverse().join('.'))}</span>` : ''} ${esc(x.e)}</p>
       ${x.why ? `<p><b>Почему важно:</b> ${esc(x.why)}</p><p><b>Влияние на мир:</b> ${esc(x.impact)}</p>` : ''}
+      ${x.img && safeImg(x.img) ? `<figure class="evimg"><img src="${esc(safeImg(x.img))}" alt="Иллюстрация к событию: ${esc(clip(x.e, 80))}" loading="lazy" onerror="this.closest('figure').remove()">${figCredit(x.img)}</figure>` : ''}
       ${x.ex ? `<p class="muted"><small>${esc(clip(x.ex, 240))}</small></p>` : ''}
       <div class="row">${actions(it)}${x.url ? `<a class="btn ghost sm" href="${esc(safeUrl(x.url))}" target="_blank" rel="noopener">Читать в Википедии</a>` : ''}</div></div>`; }).join('')
     + (mode !== 'archive' ? '<p class="muted"><small>Источник: Википедия («В этот день»). Объяснения «почему важно» здесь не сочиняются: читайте статью по ссылке.</small></p>' : '');

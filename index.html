@@ -177,6 +177,28 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
 .taskbox.done{border-color:var(--emerald)}
 .done-card{border-color:var(--emerald)}
 @media(min-width:900px){.navrow{bottom:12px}}
+
+/* ===================== v3: иллюстрации, «переписка», «Слабо → Лучше», фото ===================== */
+figure.illus{margin:0 0 12px;border-radius:14px;overflow:hidden;background:var(--bg2);border:1px solid var(--line)}
+figure.illus svg{display:block;width:100%;height:auto;max-height:190px}
+.il *{stroke-linecap:round;stroke-linejoin:round}
+.il .a,.il .g,.il .m{fill:none;stroke-width:3}.il .a{stroke:var(--amber)}.il .g{stroke:var(--emerald)}.il .m{stroke:var(--muted)}
+.il .fa{fill:var(--amber);stroke:none}.il .fg{fill:var(--emerald);stroke:none}.il .fm{fill:var(--muted);stroke:none}
+.chat{display:flex;flex-direction:column;gap:8px;margin:10px 0}
+.bub{max-width:90%;padding:9px 13px;border-radius:16px;line-height:1.45;border:1px solid var(--line);background:var(--bg2)}
+.bub b{display:block;font-size:.8125rem;color:var(--muted);font-weight:650;margin-bottom:2px}
+.bub.l{align-self:flex-start;border-bottom-left-radius:4px;border-color:color-mix(in srgb,var(--amber) 50%,var(--line))}
+.bub.r{align-self:flex-end;border-bottom-right-radius:4px;border-color:color-mix(in srgb,var(--emerald) 50%,var(--line))}
+.wb{display:grid;gap:8px;margin:10px 0}
+.wb>div{border-radius:12px;padding:10px 12px;border:1px solid var(--line);background:var(--bg2)}
+.wb .weak{border-left:5px solid var(--danger)}.wb .better{border-left:5px solid var(--emerald)}
+.wb small{display:block;font-weight:700;margin-bottom:2px;color:var(--muted)}
+.wb .why{display:block;margin-top:4px;color:var(--muted);font-size:.9rem}
+img.portrait{float:right;width:84px;height:84px;object-fit:cover;border-radius:14px;margin:0 0 6px 12px;border:1px solid var(--line);background:var(--bg2)}
+figure.evimg{margin:8px 0}figure.evimg img{display:block;width:100%;max-height:210px;object-fit:cover;border-radius:12px;border:1px solid var(--line);background:var(--bg2)}
+figure.evimg small{display:block;margin-top:4px}
+@media(min-width:600px){.wb{grid-template-columns:1fr 1fr}}
+
 small{font-size:.8125rem}
 .card h2.h3{font-size:1.05rem;font-weight:650} /* не мельче 13 px: браузерное «smaller» внутри мелких блоков давало 11 px */
 @media print{.modebar,.navrow,.stepline{display:none!important}}
@@ -211,6 +233,7 @@ small{font-size:.8125rem}
 <noscript><p style="padding:20px">Для работы приложения нужен JavaScript.</p></noscript>
 
 <script src="blocklist.js"></script>
+<script src="illustrations.js"></script>
 <script src="data.js"></script>
 <script src="app.js"></script>
 </body>
