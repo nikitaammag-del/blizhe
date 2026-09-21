@@ -65,7 +65,7 @@ async function loadSeen() {
       (j.quotes || []).forEach(x => seen.add(norm(x.t || ''))); (j.prompts || []).forEach(x => { if (x.id) seen.add(x.id); });
       [...(j.jokes || []), ...(j.stories || [])].forEach(x => seen.add(x.h || jh(x.t || '')));
       (j.words || []).forEach(x => seen.add(norm(x.w))); (j.books || []).forEach(x => { seen.add(norm(x.t)); if (x.url) seen.add(x.url); });
-      (j.films || []).forEach(x => seen.add(norm(x.t))); (j.tracks || []).forEach(x => { if (x.k) seen.add(x.k); }); }
+      (j.films || []).forEach(x => { seen.add(norm(x.t)); if (x.k) seen.add(x.k); }); (j.tracks || []).forEach(x => { if (x.k) seen.add(x.k); }); }
   } catch (e) { /* архива ещё нет */ }
   return seen;
 }
@@ -303,12 +303,113 @@ async function buildBooks(seen) {
 /* =====================================================================
    6. ФИЛЬМЫ — TMDB (нужен бесплатный ключ TMDB_API_KEY). Рейтинг = оценка × ln(1 + голосов).
    ===================================================================== */
-async function buildFilms(seen) {
+async function buildTMDB(seen) {
   if (!TMDB) throw new Error('ключ TMDB_API_KEY не задан — раздел остаётся на локальной базе');
-  const j = await getJSON(`https://api.themoviedb.org/3/movie/top_rated?language=ru-RU&page=${1 + (DAYNUM % 100)}&api_key=${TMDB}`);
-  const r = (j.results || []).filter(m => m.overview && m.vote_count > 500 && !seen.has(norm(m.title))).map(m => ({ t: m.title, y: (m.release_date || '').slice(0, 4), g: '', rating: m.vote_average, count: m.vote_count,
-    why: clip(m.overview, 220), score: Math.round(m.vote_average * Math.log(1 + m.vote_count) * 100) / 100, src: 'TMDB' })).sort((a, b) => b.score - a.score);
-  if (!r.length) throw new (j.results && j.results.length ? Exhausted : Error)('нет фильмов'); return r.slice(0, 1);
+  const call = async path => { try { return await getJSON(`https://api.themoviedb.org/3/${path}${path.includes('?') ? '&' : '?'}api_key=${TMDB}`); }
+    catch (e) { throw new Error(/40[13]/.test(e.message) ? 'TMDB отклонил ключ (' + e.message + '): нужен «API Key» (v3), а не «Read Access Token»' : e.message); } };
+  const [j, gl] = await Promise.all([call(`movie/top_rated?language=ru-RU&page=${1 + (DAYNUM % 100)}`), call('genre/movie/list?language=ru').catch(() => ({ genres: [] }))]);
+  const gname = new Map((gl.genres || []).map(g => [g.id, String(g.name || '').toLowerCase()]));
+  const r = (j.results || []).filter(m => m.overview && m.vote_count > 500 && !m.adult && !seen.has('tm' + m.id) && !seen.has(norm(m.title)))
+    .map(m => ({ k: 'tm' + m.id, t: m.title, orig: m.original_title && m.original_title !== m.title ? m.original_title : '', y: (m.release_date || '').slice(0, 4),
+      g: (m.genre_ids || []).map(id => gname.get(id)).filter(Boolean).slice(0, 3).join(', '), rating: m.vote_average, count: m.vote_count,
+      why: clip(m.overview, 240), url: 'https://www.themoviedb.org/movie/' + m.id, src: 'TMDB', rsrc: 'TMDB', kind: 'movie',
+      score: Math.round(m.vote_average * Math.log(1 + m.vote_count) * 100) / 100 })).sort((a, b) => b.score - a.score);
+  if (!r.length) throw new (j.results && j.results.length ? Exhausted : Error)('нет фильмов');
+  return r.slice(0, 1);
+}
+
+/* =====================================================================
+   6б. ФИЛЬМ ИЛИ СЕРИАЛ ДНЯ без ключей и без расхода токенов нейросети:
+       TVmaze (открытый API: рейтинг, жанры, IMDb-номер) + Викиданные и русская Википедия (русское название и описание).
+       Рейтинг = оценка × (1 + популярность/100); берём лучшее из ещё не показанных. Только сериалы, у которых есть
+       статья в русской Википедии (значит, значимые и с русским описанием). Если задан TMDB_API_KEY — берём фильмы оттуда.
+   ===================================================================== */
+const TV_GENRE_RU = { Drama: 'драма', Comedy: 'комедия', Action: 'боевик', Adventure: 'приключения', 'Science-Fiction': 'научная фантастика', Crime: 'криминал', Thriller: 'триллер', Mystery: 'детектив',
+  Fantasy: 'фэнтези', Horror: 'ужасы', Romance: 'мелодрама', Family: 'семейный', Anime: 'аниме', History: 'история', War: 'военный', Western: 'вестерн', Music: 'музыка', Medical: 'медицина',
+  Legal: 'юридический', Sports: 'спорт', Espionage: 'шпионский', Supernatural: 'мистика', Nature: 'природа', Food: 'кулинария', Travel: 'путешествия' };
+const TV_SKIP_TYPES = /reality|talk|game|news|sports|variety|panel|award/i;
+async function buildSeries(seen) {
+  const shows = [];
+  for (const k of [0, 1, 2]) { try { const j = await getJSON(`https://api.tvmaze.com/shows?page=${(DAY_OF_YEAR * 3 + k) % 240}`); if (Array.isArray(j)) shows.push(...j); } catch (e) { /* конец списка или сбой одной страницы */ } }
+  if (!shows.length) throw new Error('TVmaze не ответил');
+  const good = shows.filter(x => x && x.rating && x.rating.average >= 8 && (x.weight || 0) >= 50 && x.externals && /^tt\d+$/.test(x.externals.imdb || '') && !TV_SKIP_TYPES.test(x.type || '') && !(x.genres || []).includes('Adult'))
+    .map(x => ({ k: 'tv' + x.id, name: x.name, y: (x.premiered || '').slice(0, 4), g: (x.genres || []).map(z => TV_GENRE_RU[z]).filter(Boolean).slice(0, 3).join(', '), rating: x.rating.average, imdb: x.externals.imdb,
+      score: Math.round(x.rating.average * (1 + (x.weight || 0) / 100) * 100) / 100 }));
+  const fresh = good.filter(x => !seen.has(x.k)).sort((a, b) => b.score - a.score);
+  if (!fresh.length) throw new (good.length ? Exhausted : Error)('нет подходящих сериалов');
+  const top = fresh.slice(0, 12);
+  /* русские названия и ссылки на статьи — одним запросом к Викиданным */
+  const q = `SELECT ?imdb ?label ?ruwiki WHERE { VALUES ?imdb { ${top.map(x => `"${x.imdb}"`).join(' ')} } ?item wdt:P345 ?imdb . OPTIONAL { ?item rdfs:label ?label FILTER(LANG(?label) = "ru") } OPTIONAL { ?ruwiki schema:about ?item ; schema:isPartOf <https://ru.wikipedia.org/> } }`;
+  const wd = await getJSON('https://query.wikidata.org/sparql?format=json&query=' + encodeURIComponent(q));
+  const map = new Map(); ((wd.results && wd.results.bindings) || []).forEach(b => { if (b.ruwiki && b.imdb) map.set(b.imdb.value, { label: b.label && b.label.value, wiki: b.ruwiki.value }); });
+  const best = top.find(x => map.has(x.imdb)); if (!best) throw new Error('у лучших сериалов нет статьи в русской Википедии');
+  const w = map.get(best.imdb), wtitle = decodeURIComponent((w.wiki.split('/wiki/')[1] || '')).replace(/_/g, ' ');
+  let why = ''; try { const sm = await getJSON('https://ru.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(wtitle.replace(/ /g, '_'))); why = clip(oneLine(sm.extract || ''), 240); } catch (e) { /* без описания тоже можно */ }
+  return [{ k: best.k, t: w.label || wtitle, orig: best.name, y: best.y, g: best.g, rating: best.rating, why, url: httpUrl(w.wiki), imdb: best.imdb, src: 'TVmaze, Википедия (CC BY-SA)', rsrc: 'TVmaze', kind: 'series', score: best.score }];
+}
+/* =====================================================================
+   6в. ФИЛЬМ ИЛИ СЕРИАЛ ДНЯ — основной источник без ключей:
+       • каталог Cinemeta (официальный публичный сервис Stremio): фильмы и сериалы по годам, рейтинг IMDb, жанры;
+       • Викиданные: русское название, номер на Кинопоиске, ссылка на статью в русской Википедии;
+       • rating.kinopoisk.ru/{id}.xml — открытый экспорт рейтингов: оценка Кинопоиска и IMDb с числом голосов;
+       • русская Википедия — описание.
+       Каждый день берётся другой год (1950–2025 для фильмов), из него — лучший по «оценка × ln(голоса)» из ещё не показанных.
+       2 дня из 3 — фильм, каждый 4-й день — сериал. Запасные источники по порядку: TMDB (если есть ключ) и TVmaze (сериалы).
+   ===================================================================== */
+const CM_GENRE_RU = { Action: 'боевик', Adventure: 'приключения', Animation: 'мультфильм', Biography: 'биография', Comedy: 'комедия', Crime: 'криминал', Documentary: 'документальный', Drama: 'драма',
+  Family: 'семейный', Fantasy: 'фэнтези', History: 'история', Horror: 'ужасы', Mystery: 'детектив', Romance: 'мелодрама', 'Sci-Fi': 'фантастика', Sport: 'спорт', Thriller: 'триллер', War: 'военный',
+  Western: 'вестерн', Music: 'музыка', Musical: 'мюзикл' };
+const CM_SKIP = /sex|porn|erotic|nude|xxx|секс|порно|эрот/i;   // откровенное не берём (в каталоге бывают названия с такими словами)
+async function kpRating(id) {                                  // открытый XML Кинопоиска (в кодировке windows-1251)
+  const xml = await getTextAuto(`https://rating.kinopoisk.ru/${id}.xml`);
+  const kp = xml.match(/<kp_rating num_vote="(\d+)">([\d.]+)</), im = xml.match(/<imdb_rating num_vote="(\d+)">([\d.]+)</);
+  return { kp: kp ? { r: +kp[2], n: +kp[1] } : null, imdb: im ? { r: +im[2], n: +im[1] } : null };
+}
+async function ruInfo(ids) {                                   // русские названия, статьи и номера Кинопоиска — одним запросом к Викиданным
+  const q = `SELECT ?imdb ?label ?ruwiki ?kp WHERE { VALUES ?imdb { ${ids.map(x => `"${x}"`).join(' ')} } ?item wdt:P345 ?imdb . OPTIONAL { ?item rdfs:label ?label FILTER(LANG(?label) = "ru") } OPTIONAL { ?ruwiki schema:about ?item ; schema:isPartOf <https://ru.wikipedia.org/> } OPTIONAL { ?item wdt:P2603 ?kp } }`;
+  const wd = await getJSON('https://query.wikidata.org/sparql?format=json&query=' + encodeURIComponent(q)); const m = new Map();
+  ((wd.results && wd.results.bindings) || []).forEach(b => { if (!b.imdb) return; const cur = m.get(b.imdb.value) || {};
+    m.set(b.imdb.value, { label: cur.label || (b.label && b.label.value), wiki: cur.wiki || (b.ruwiki && b.ruwiki.value), kp: cur.kp || (b.kp && /^\d+$/.test(b.kp.value) ? b.kp.value : '') }); });
+  return m;
+}
+async function ruSummary(wikiUrl) {
+  const title = decodeURIComponent((wikiUrl.split('/wiki/')[1] || '')).replace(/ /g, '_'); if (!title) return '';
+  try { const sm = await getJSON('https://ru.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(title)); return clip(oneLine(sm.extract || ''), 240); } catch (e) { return ''; }
+}
+async function buildCinemeta(seen) {
+  const type = DAY_OF_YEAR % 4 === 0 ? 'series' : 'movie', minY = type === 'series' ? 1975 : 1950, span = 2025 - minY + 1;
+  let exhausted = false, lastErr = '';
+  for (let attempt = 0; attempt < 4; attempt++) {           // если в этом году подходящих нет — берём другой год
+    const year = 2025 - ((DAY_OF_YEAR * 11 + attempt * 17) % span);
+    let metas; try { metas = ((await getJSON(`https://v3-cinemeta.strem.io/catalog/${type}/year/genre=${year}.json`)).metas) || []; } catch (e) { lastErr = e.message; continue; }
+    const cands = metas.filter(m => m && /^tt\d+$/.test(m.imdb_id || m.id || '') && m.name && +m.imdbRating >= 7.4 && !CM_SKIP.test(m.name + ' ' + (m.description || '')) && !(m.genres || m.genre || []).some(g => /reality|talk|game/i.test(g)))
+      .map(m => ({ k: m.imdb_id || m.id, name: m.name, y: String(m.year || m.releaseInfo || year).slice(0, 4), imdbR: +m.imdbRating, g: (m.genres || m.genre || []).map(z => CM_GENRE_RU[z]).filter(Boolean).slice(0, 3).join(', ') }))
+      .sort((a, b) => b.imdbR - a.imdbR);
+    const fresh = cands.filter(x => !seen.has(x.k));
+    if (cands.length && !fresh.length) { exhausted = true; continue; }
+    if (!fresh.length) continue;
+    const top = fresh.slice(0, 12), info = await ruInfo(top.map(x => x.k)), ru = top.filter(x => info.has(x.k) && info.get(x.k).wiki).slice(0, 5); // только с русской статьёй
+    if (!ru.length) { lastErr = 'у лучших нет статьи в русской Википедии'; continue; }
+    const scored = [];
+    for (const x of ru) {
+      const i = info.get(x.k); let r = null; if (i.kp) { try { r = await kpRating(i.kp); } catch (e) { r = null; } }
+      const kp = r && r.kp && r.kp.n >= 10000 ? r.kp : null, im = r && r.imdb && r.imdb.n >= 20000 ? r.imdb : null;
+      const main = kp ? { r: kp.r, n: kp.n, src: 'Кинопоиск' } : im ? { r: im.r, n: im.n, src: 'IMDb' } : { r: x.imdbR, n: 0, src: 'IMDb' };
+      scored.push({ x, i, main, im: r && r.imdb, score: main.n ? main.r * Math.log(1 + main.n) : main.r * 4 });
+    }
+    scored.sort((a, b) => b.score - a.score); const w = scored[0];
+    const wtitle = decodeURIComponent((w.i.wiki.split('/wiki/')[1] || '')).replace(/_/g, ' ');
+    return [{ k: w.x.k, t: w.i.label || wtitle, orig: w.x.name, y: w.x.y, g: w.x.g, rating: w.main.r, count: w.main.n || undefined, rsrc: w.main.src,
+      imdbRating: w.im ? w.im.r : w.x.imdbR, imdbVotes: w.im ? w.im.n : undefined, kpId: w.i.kp || undefined, imdb: w.x.k, kind: type,
+      why: await ruSummary(w.i.wiki), url: httpUrl(w.i.wiki), src: 'Cinemeta, Кинопоиск, Википедия (CC BY-SA)', score: Math.round(w.score * 100) / 100 }];
+  }
+  throw new (exhausted ? Exhausted : Error)('нет подходящих в каталоге Cinemeta' + (lastErr ? ' (' + lastErr + ')' : ''));
+}
+/* Порядок источников: Cinemeta+Кинопоиск → TMDB (если есть ключ) → TVmaze (сериалы). В отчёте — какой сработал */
+async function buildFilms(seen) {
+  const chain = [['Cinemeta', buildCinemeta], ...(TMDB ? [['TMDB', buildTMDB]] : []), ['TVmaze', buildSeries]]; const errs = []; let exhausted = false;
+  for (const [name, fn] of chain) { try { const r = await fn(seen); if (r && r.length) { report['films:источник'] = name; return r; } } catch (e) { if (e instanceof Exhausted) exhausted = true; errs.push(name + ': ' + e.message); } }
+  throw new (exhausted ? Exhausted : Error)(errs.join(' | '));
 }
 
 /* =====================================================================
