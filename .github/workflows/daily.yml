@@ -1,0 +1,39 @@
+# Ежедневная сборка подборки: запускается каждый день и по кнопке (Actions → Run workflow)
+name: Ежедневная подборка
+on:
+  schedule:
+    - cron: '30 2 * * *'   # 02:30 UTC = 05:30 по Москве, до утреннего открытия приложения
+  workflow_dispatch: {}
+permissions:
+  contents: write
+concurrency:
+  group: daily-build
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GIGACHAT_AUTH_KEY: ${{ secrets.GIGACHAT_AUTH_KEY }}   # необязательно: шутки и перевод промптов (GigaChat)
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}   # необязательно: запасной вариант вместо GigaChat
+      TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}             # необязательно: фильмы с рейтингом
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      # Серверы GigaChat подписаны российским сертификатом Минцифры — без него Node отклонит соединение
+      - name: Сертификат Минцифры (для GigaChat)
+        if: env.GIGACHAT_AUTH_KEY != ''
+        continue-on-error: true
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/russian_ca.crt" https://gu-st.ru/content/lending/russian_trusted_root_ca_pem.crt
+          echo "NODE_EXTRA_CA_CERTS=$RUNNER_TEMP/russian_ca.crt" >> "$GITHUB_ENV"
+      - name: Собрать daily.json
+        run: node tools/build-daily.mjs
+      - name: Сохранить в репозиторий
+        run: |
+          git config user.name  "daily-bot"
+          git config user.email "daily-bot@users.noreply.github.com"
+          git add daily.json archive/
+          git diff --cached --quiet || git commit -m "Подборка за $(date -u +%F)"
+          git push
