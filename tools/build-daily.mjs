@@ -21,7 +21,7 @@ const DAYNUM = Math.floor(Date.parse(TODAY + 'T00:00:00Z') / 864e5);
 const GIGA = process.env.GIGACHAT_AUTH_KEY || '';      // «Ключ авторизации» из личного кабинета GigaChat (Studio)
 const KEY = process.env.ANTHROPIC_API_KEY || '';       // запасной вариант
 const HAS_LLM = !!(GIGA || KEY);                       // есть ли хоть какая-то нейросеть
-const LLM_NAME = GIGA ? 'GigaChat' : KEY ? 'Claude' : '';
+let LLM_NAME = GIGA ? 'GigaChat' : KEY ? 'Claude' : ''; // какая нейросеть реально работает (уточняется после проверки входа)
 const TMDB = process.env.TMDB_API_KEY || '';
 const report = {};
 
@@ -82,10 +82,13 @@ export function parseWikiquote(wt, author) {
     if (h) { sec = wikiClean(h[2]); skip = SKIP_SEC.test(sec); dis = DIS_SEC.test(sec); continue; }
     const m = lines[i].match(/^\*\s+([^*].*)$/); if (!m || skip) continue;
     const text = wikiClean(m[1]).replace(/^[—–-]\s*/, '').replace(/^[«"]|[»"]$/g, '').trim();
-    let src = '', j = i + 1; while (lines[j] && /^\*\*/.test(lines[j])) { const s = wikiClean(lines[j].replace(/^\*+\s*/, '')); if (s) src += (src ? '; ' : '') + s; j++; }
+    if (/^:|^(Категория|Category|Файл|File|Шаблон|Template):/i.test(text)) continue; // служебные ссылки Википедии — не цитаты
+    /* Подпункты «**» бывают источником, а бывают комментарием редакторов («Реальная цитата…», «Эта цитата восходит…») — комментарий не источник и говорит о сомнительной атрибуции */
+    const NOTE = /^(Реальная цитата|Эта цитата|Приписыва|См\.|Оригинал|На самом деле|Ошибочно|Фактически|Цитата (не|неточно))/i; let src = '', j = i + 1, doubtful = false;
+    while (lines[j] && /^\*\*/.test(lines[j])) { const s2 = wikiClean(lines[j].replace(/^\*+\s*/, '')); if (NOTE.test(s2)) doubtful = true; else if (s2) src += (src ? '; ' : '') + s2; j++; }
     if (text.length < 30 || text.length > 220 || !clean(text)) continue;
-    const score = (src ? 3 : 0) + (text.length >= 40 && text.length <= 200 ? 2 : 0) + (dis ? 0 : 1) - (/^[—–-]\s/.test(wikiClean(m[1])) ? 4 : 0); // реплики диалога без контекста — в конец
-    out.push({ a: author, t: text, src: src ? clip(src, 160) : '', dis: dis || !src, score });
+    const score = (src ? 3 : 0) + (text.length >= 40 && text.length <= 200 ? 2 : 0) + (dis ? 0 : 1) - (doubtful ? 2 : 0) - (/^[—–-]\s/.test(wikiClean(m[1])) ? 4 : 0); // реплики диалога без контекста — в конец
+    out.push({ a: author, t: text, src: src ? clip(src, 160) : '', dis: dis || !src || doubtful, score });
   }
   return out;
 }
@@ -140,13 +143,13 @@ export function parseRss(xml) {
 }
 const toks = t => new Set(norm(t).split(' ').filter(w => w.length > 4).map(w => w.slice(0, 5)));
 const RUSSIA = /росси|(^|[^а-яё])рф([^а-яё]|$)|москв|кремл|russia|moscow|kremlin/i;
-const DISCOVERY = /открыт|изобрет|учён|ученые|архимед|ньютон|менделеев|попов|радио|искусственн\w* интеллект|нейросет|(^|[^а-яё])ии([^а-яё]|$)|прорыв|breakthrough|discover|invent|scientist|newton|archimedes|artificial intelligence|\bAI\b/i;
+const DISCOVERY = /научн\w* открыти|открыти\w* (в области|учён|ученых|физик|астроном|биолог|химик|генетик)|(сделал|совершил)\w* открыти|учён|учен(ые|ых|ым|ыми|ого)|физик|химик[аиов]|биолог|астроном|генетик|изобрет|нобелев|прорыв в|искусственн\w* интеллект|нейросет|(^|[^а-яё])ии([^а-яё]|$)|архимед|ньютон|менделеев|радио|телескоп|космическ|квантов|днк|геном|вакцин|breakthrough|discover|invent|scientist|researchers|newton|archimedes|artificial intelligence|\bAI\b/i; // «открыт» отдельно НЕ берём: цепляет «открытая площадка», «открыли памятник»
 const CLICKBAIT = /(^|[^а-яё])шок|сенсаци|не поверите|won't believe|you won.t believe/i;
 /* Для новостей допускаем политику и ЧП, отсекаем откровенное, оскорбления по национальности и темы самоубийств */
 const newsOk = t => { const x = yo(t); return !BANNED[0].test(x) && !BANNED[1].test(x) && !/суицид|самоубий|педофил/.test(x); };
 async function buildNews(seen) {
   const all = [];
-  await Promise.all(FEEDS.map(async f => { try { parseRss(await getTextAuto(f.u)).slice(0, f.big ? 30 : 15).forEach(x => all.push({ ...x, src: f.n, cat: f.cat, w: f.w, lang: f.lang })); report['feed:' + f.n] = 'ok'; } catch (e) { report['feed:' + f.n] = 'fail: ' + e.message; } }));
+  await Promise.all(FEEDS.map(async f => { try { parseRss(await getTextAuto(f.u)).slice(0, f.big ? 30 : 15).forEach(x => all.push({ ...x, title: x.title.split(' // ')[0].trim(), src: f.n, cat: f.cat, w: f.w, lang: f.lang })); report['feed:' + f.n] = 'ok'; } catch (e) { report['feed:' + f.n] = 'fail: ' + e.message; } }));
   const now = Date.parse(TODAY + 'T12:00:00Z');
   const pool = all.map(x => { const t = Date.parse(x.date); return { ...x, hrs: isNaN(t) ? 48 : Math.max(0, (now - t) / 36e5) }; })
     .filter(x => x.title && x.link && x.hrs <= 72 && newsOk(x.title + ' ' + x.desc) && !seen.has(norm(x.title)));
@@ -226,10 +229,13 @@ export function parseWikt(wt) {
   let start = wt.search(/\{\{-ru-\}\}|^=+\s*Русский\s*=+\s*$/m); if (start < 0) start = 0;
   let body = wt.slice(start); const next = body.slice(10).search(/^=\s*\{\{-(?!ru-)[a-z-]+-\}\}|^==?\s*(?!Русский)[А-ЯЁ][а-яё]+\s*==?\s*$/m); if (next > 0) body = body.slice(0, next + 10);
   const sec = name => { const m = body.match(new RegExp('^=+\\s*' + name + '\\s*=+\\s*$\\n([\\s\\S]*?)(?=^=+[^=\\n]|$(?![\\s\\S]))', 'm')); return m ? m[1] : ''; };
-  const meanings = sec('Значение').split('\n').filter(l => /^#(?![#*:])/.test(l)).map(l => wikiClean(l.replace(/^#\s*/, ''))).filter(l => l.length > 8 && !/[{}]/.test(l));
+  const tidy = t => t.replace(/^[\s;,.:—–-]+/, '').replace(/[\s;,:—–-]+$/, '').trim(); // убираем «; » в начале и обрывки после удалённых шаблонов
+  const meanings = sec('Значение').split('\n').filter(l => /^#(?![#*:])/.test(l)).map(l => tidy(wikiClean(l.replace(/^#\s*/, '')))).filter(l => l.length > 8 && !/[{}]/.test(l));
   if (!meanings.length) return null;
-  const et = sec('Этимология').split('\n').map(l => wikiClean(l)).filter(l => l.length > 10 && !/[{}]/.test(l)).join(' ');
-  return { m: clip(meanings.slice(0, 2).join('; '), 240), e: clip(et, 240) };
+  let et = tidy(sec('Этимология').split('\n').map(l => wikiClean(l)).filter(l => l.length > 10 && !/[{}]/.test(l)).join(' '));
+  et = et.replace(/[,;]?\s*(далее\s+)?(из|от|и|или|через|с|от\s+слова)\s*$/i, '').trim(); // оборванное «…, далее из» после вырезанного шаблона
+  if (et && !/[.!?…]$/.test(et)) et += '.';
+  return { m: clip(meanings.slice(0, 2).join('; '), 240), e: et.length > 12 ? clip(et, 240) : '' };
 }
 async function buildWord(seen) {
   const why = [];
@@ -254,14 +260,13 @@ async function buildBooks(seen) {
   const ranked = docs.map(d => ({ t: d.title, a: (d.author_name || ['—'])[0], y: d.first_publish_year, rating: Math.round(d.ratings_average * 100) / 100, count: d.ratings_count, url: 'https://openlibrary.org' + d.key,
     score: Math.round(d.ratings_average * Math.log(1 + d.ratings_count) * 100) / 100, why: '' })).filter(b => !seen.has(norm(b.t))).sort((a, b) => b.score - a.score);
   if (!ranked.length) throw new Error('нет подходящих книг');
-  let pick = rot(ranked.slice(0, 15), 1);
-  if (lg === 'eng') { // русскоязычных книг с оценками нет: берём зарубежную только с русским названием
-    if (!HAS_LLM) throw new Error('русских книг с оценками нет, а для перевода названий нужен ключ GigaChat — остаётся русская база');
-    const tr = await toRussian(pick.map(b => ({ title: b.t, text: b.a })), 'book');
-    pick = pick.map((b, i) => tr[i] && cyr(tr[i].title) >= 0.5 ? { ...b, orig: b.t, t: tr[i].title, a: tr[i].text && cyr(tr[i].text) >= 0.5 ? tr[i].text : b.a } : null).filter(Boolean);
-    if (!pick.length) throw new Error('перевод названия не удался');
-  }
-  return pick;
+  const ru = ranked.filter(b => cyr(b.t) >= 0.5); // название уже по-русски (у «русских» изданий в Open Library бывает латинское название, напр. Le petit prince)
+  if (ru.length) return rot(ru.slice(0, 15), 1);
+  if (!HAS_LLM) throw new Error('у лучших книг нет русского названия, а для перевода нужен ключ GigaChat — остаётся русская база');
+  const cand = rot(ranked.slice(0, 15), 3), tr = await toRussian(cand.map(b => ({ title: b.t, text: b.a })), 'book');
+  const pick = cand.map((b, i) => tr[i] && cyr(tr[i].title) >= 0.5 ? { ...b, orig: b.t, t: tr[i].title, a: cyr(tr[i].text) >= 0.5 ? tr[i].text : b.a } : null).filter(Boolean);
+  if (!pick.length) throw new Error('перевод названия не удался' + (tr.errors[0] ? ' (' + tr.errors[0] + ')' : ''));
+  return pick.slice(0, 1);
 }
 
 /* =====================================================================
@@ -293,7 +298,7 @@ const MAT = [/х[уy][йеяию]/, /п[иi]зд/, /бля[дт]/, /(^|[^а-я])
   /(^|[^а-я])(на|по|за|вы|у|от|до|при|раз|об|под|про|пере)?еб([аоуиыяеюл]|ну|ан)/, /долбо?еб|долбае/, /мудак|мудил/, /пид[оа]р|пидр/,
   /гандон|залуп|манд[ао]в|шлюх/, /(^|[^а-я])сук(а|и|е|у|ой|ам|ами)([^а-я]|$)|сучар/, /трахат|трахну|трахал|трахн/, /\*{2,}|[а-я]\*[а-я]|#{2,}/];
 const BANNED = [/жид(ы|ов|ам)?([^а-я]|$)|хач|чурк|хохл|кацап|москал|черномаз/, /порно|минет|оргазм|сперм|изнасил|педофил|инцест|зоофил|некрофил/, /суицид|самоубий|теракт|террор|похорон|погибш/];
-const POLITICS = [/путин|трамп|байден|зеленск|навальн|политик|госдум|депутат|санкци|единорос|коммунист|мобилизац|вторжен|спецоперац/];
+const POLITICS = [/путин|трамп|байден|зеленск|навальн|политик|госдум|депутат|санкци|единорос|коммунист|мобилизац|вторжен|спецоперац|избирател|референдум|выбор(ы|ов|ах|ам)([^а-я]|$)/];
 export const hasMat = t => MAT.some(r => r.test(yo(t)));
 const hasBanned = t => BANNED.some(r => r.test(yo(t))) || (!HUMOR_ALLOW_POLITICS && POLITICS.some(r => r.test(yo(t))));
 const sentences = t => (t.match(/[.!?…]+(\s|$)/g) || []).length || 1;
@@ -334,30 +339,35 @@ async function buildHumor(seen) {
 }
 
 /* ---------- Нейросеть: GigaChat (основной) или Claude (запасной) — только для шуток и перевода ---------- */
-let gigaTok = null;
+let gigaTok = null, gigaDown = false;
+const netErr = (what, e) => new Error(`${what}: ${e.message}${e.cause ? ' [' + (e.cause.code || e.cause.message) + ']' : ''}`); // показываем и причину сбоя (сертификат, обрыв, таймаут)
+const fetchG = async (what, url, opts) => { try { return await fetch(url, opts); } catch (e) { throw netErr(what, e); } };
+const retry = async (fn, n = 3) => { let last; for (let i = 0; i < n; i++) { try { return await fn(); } catch (e) { last = e; if (gigaDown && !KEY) break; await new Promise(r => setTimeout(r, 2000 * (i + 1))); } } throw last; };
 async function gigaToken() {
   if (gigaTok && gigaTok.exp > Date.now() + 60000) return gigaTok.t;
-  const r = await fetch('https://ngw.devices.sberbank.ru:9443/api/v2/oauth', { method: 'POST', signal: AbortSignal.timeout(20000),
+  const r = await fetchG('GigaChat OAuth', 'https://ngw.devices.sberbank.ru:9443/api/v2/oauth', { method: 'POST', signal: AbortSignal.timeout(20000),
     headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json', RqUID: crypto.randomUUID(), Authorization: 'Basic ' + GIGA },
     body: 'scope=' + encodeURIComponent(process.env.GIGACHAT_SCOPE || 'GIGACHAT_API_PERS') });
   const j = await r.json().catch(() => ({})); if (!r.ok || !j.access_token) throw new Error('GigaChat OAuth: ' + (j.message || r.status));
   gigaTok = { t: j.access_token, exp: j.expires_at || Date.now() + 25 * 60000 }; return gigaTok.t;
 }
 async function gigachat(prompt, max = 2000) {
-  const r = await fetch('https://gigachat.devices.sberbank.ru/api/v1/chat/completions', { method: 'POST', signal: AbortSignal.timeout(90000),
+  const r = await fetchG('GigaChat запрос', 'https://gigachat.devices.sberbank.ru/api/v1/chat/completions', { method: 'POST', signal: AbortSignal.timeout(90000),
     headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: 'Bearer ' + await gigaToken() },
     body: JSON.stringify({ model: process.env.GIGACHAT_MODEL || 'GigaChat', messages: [{ role: 'user', content: prompt }], temperature: 0.8, max_tokens: max }) });
   const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error('GigaChat: ' + (j.message || r.status));
   return (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '';
 }
+const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-opus-5'; // можно заменить на более дешёвую 'claude-sonnet-5' переменной CLAUDE_MODEL
 async function claude(prompt, max = 2000) {
   const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', signal: AbortSignal.timeout(90000),
     headers: { 'content-type': 'application/json', 'x-api-key': KEY, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: process.env.CLAUDE_MODEL || 'claude-sonnet-5', max_tokens: max, messages: [{ role: 'user', content: prompt }] }) });
+    body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: max, messages: [{ role: 'user', content: prompt }] }) });
   const j = await r.json(); if (!r.ok) throw new Error('Claude API: ' + (j.error && j.error.message || r.status));
   return (j.content || []).map(b => b.text || '').join('');
 }
-const llm = (prompt, max) => (GIGA ? gigachat(prompt, max) : claude(prompt, max));
+/* GigaChat — основной; если вход не удался, а ключ Claude есть — автоматически переключаемся на Claude Opus */
+const llm = (prompt, max) => (GIGA && !gigaDown) ? gigachat(prompt, max) : KEY ? claude(prompt, max) : Promise.reject(new Error(GIGA ? 'GigaChat недоступен (см. giga:oauth), запасного ключа Claude нет' : 'нет ключа нейросети'));
 
 /* ---------- Перевод на русский: всё, что показывается в приложении, должно быть по-русски ---------- */
 export const cyr = t => { const l = (t.match(/[a-zа-яё]/gi) || []).length; return l ? (t.match(/[а-яё]/gi) || []).length / l : 1; }; // доля кириллицы среди букв
@@ -370,7 +380,7 @@ async function toRussian(list, kind) {
   const res = []; res.errors = [];
   for (const it of list) {
     try {
-      const out = (await llm(`Переведи на русский язык. ${rules}\nОтветь СТРОГО в таком формате, без пояснений и без кавычек вокруг ответа:\nЗАГОЛОВОК: <перевод заголовка>\nТЕКСТ:\n<перевод текста>\n\nЗАГОЛОВОК: ${it.title}\nТЕКСТ:\n${it.text}`, 3000)).replace(/```[a-z]*/gi, '').trim();
+      const out = (await retry(() => llm(`Переведи на русский язык. ${rules}\nОтветь СТРОГО в таком формате, без пояснений и без кавычек вокруг ответа:\nЗАГОЛОВОК: <перевод заголовка>\nТЕКСТ:\n<перевод текста>\n\nЗАГОЛОВОК: ${it.title}\nТЕКСТ:\n${it.text}`, 3000))).replace(/```[a-z]*/gi, '').trim();
       const m = out.match(/ЗАГОЛОВОК:\s*([^\n]*)\n+\s*ТЕКСТ:\s*([\s\S]*)$/i);
       if (!m || !m[1].trim() || !m[2].trim()) throw new Error('ответ не в ожидаемом формате');
       res.push({ title: m[1].trim().replace(/^["«»]+|["«»]+$/g, ''), text: m[2].trim() });
@@ -385,6 +395,14 @@ const extractJSON = t => { const a = t.search(/[\[{]/); const b = Math.max(t.las
    ===================================================================== */
 async function main() {
   const seen = await loadSeen();
+  if (GIGA) { // заранее проверяем сертификат и вход в GigaChat, чтобы причина сбоя была видна в daily.json
+    const ca = process.env.NODE_EXTRA_CA_CERTS;
+    report['giga:cert'] = ca ? 'файл ' + (await fs.stat(ca).then(() => 'есть', () => 'НЕТ')) : 'не задан (шаг «Сертификат Минцифры» не сработал)';
+    try { await retry(gigaToken, 2); report['giga:oauth'] = 'ok'; } catch (e) { gigaDown = true; report['giga:oauth'] = 'fail: ' + e.message; }
+  }
+  if (GIGA && gigaDown && KEY) { LLM_NAME = 'Claude'; report['llm'] = `GigaChat недоступен → работает Claude (${CLAUDE_MODEL})`; }
+  else if (GIGA && !gigaDown) report['llm'] = 'GigaChat';
+  else if (KEY) report['llm'] = `Claude (${CLAUDE_MODEL})`;
   const [quotes, news, prompts, words, books, films, humor] = await Promise.all([
     step('quotes', () => buildQuotes(seen), []), step('news', () => buildNews(seen), []), step('prompts', () => buildPrompts(seen), []),
     step('word', () => buildWord(seen), []), step('books', () => buildBooks(seen), []), step('films', () => buildFilms(seen), []), step('humor', () => buildHumor(seen), { jokes: [], stories: [] })]);
