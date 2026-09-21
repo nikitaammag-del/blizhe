@@ -32,8 +32,9 @@ jobs:
         run: node tools/build-daily.mjs
       - name: Сохранить в репозиторий
         run: |
-          git config user.name  "daily-bot"
-          git config user.email "daily-bot@users.noreply.github.com"
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add daily.json archive/
           git diff --cached --quiet || git commit -m "Подборка за $(date -u +%F)"
           git push
+    
