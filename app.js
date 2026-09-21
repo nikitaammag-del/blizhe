@@ -82,7 +82,7 @@ const SECTIONS = [
   { id: 'humor', t: 'Юмор дня', m: 1 }, { id: 'news', t: 'Новости и факты', m: 3 },
   { id: 'prompt', t: 'Промпт-инжиниринг дня', m: 3 }, { id: 'word', t: 'Слово дня', m: 1 },
   { id: 'reflect', t: 'Вопросы для саморефлексии', m: 2 }, { id: 'habit', t: 'Микро-привычка дня', m: 1 },
-  { id: 'book', t: 'Книга дня', m: 1 }, { id: 'film', t: 'Фильм дня', m: 1 },
+  { id: 'book', t: 'Книга дня', m: 1 }, { id: 'film', t: 'Фильм или сериал дня', m: 1 },
   { id: 'track', t: 'Трек дня', m: 1 }, { id: 'summary', t: 'Итог дня', m: 1 }
 ];
 /* Режим «Сессия»: один шаг на экране. Время — оценка вместе с заданием, не только чтение */
@@ -258,9 +258,14 @@ const BODY = {
   },
   film() {
     const f = mix('films', D.films, 1)[0]; const q = encodeURIComponent(f.t + ' ' + f.y);
-    return `<h3>${esc(f.t)} <span class="muted">(${f.y})</span></h3>${f.g ? `<p><span class="tag">${esc(f.g)}</span></p>` : ''}<p>${esc(f.why)}</p>
-      ${f.rating ? `<p>Рейтинг TMDB: <b>${esc(f.rating)}</b> (${esc(f.count)} голосов)</p>` : '<p class="muted"><small>Рейтинг смотрите на Кинопоиске или IMDb: мы не показываем цифры, которые не можем проверить.</small></p>'}
-      <a class="btn ghost sm" target="_blank" rel="noopener" href="https://www.kinopoisk.ru/index.php?kp_query=${q}">Найти на Кинопоиске</a>`;
+    const rs = f.rsrc || (f.src && /TVmaze/.test(f.src) ? 'TVmaze' : f.src === 'TMDB' ? 'TMDB' : ''), fmtN = n => n >= 1e6 ? (n / 1e6).toFixed(1).replace('.', ',') + ' млн' : n >= 1000 ? Math.round(n / 1000) + ' тыс.' : String(n);
+    const kpLink = /^\d+$/.test(String(f.kpId || '')) ? `https://www.kinopoisk.ru/film/${f.kpId}/` : `https://www.kinopoisk.ru/index.php?kp_query=${q}`;
+    const note = f.src && /Cinemeta/.test(f.src) ? 'Каталог: Cinemeta (Stremio). Рейтинги: Кинопоиск и IMDb. Описание: Википедия (CC BY-SA).' : f.src === 'TMDB' ? 'Данные о фильме: TMDB. This product uses the TMDB API but is not endorsed or certified by TMDB.' : 'Данные: TVmaze, Википедия (CC BY-SA).';
+    return `<h3>${esc(f.t)} <span class="muted">(${esc(f.y)})</span></h3>${f.orig ? `<p class="muted"><small>Оригинальное название: ${esc(f.orig)}</small></p>` : ''}${f.g ? `<p><span class="tag">${esc(f.g)}</span>${f.kind === 'series' ? '<span class="tag amber">сериал</span>' : ''}</p>` : ''}${f.why ? `<p>${esc(f.why)}</p>` : ''}
+      ${f.rating ? `<p>${rs ? esc(rs) : 'Рейтинг'}: <b>${esc(f.rating)}</b>${f.count ? ` (${fmtN(+f.count)} голосов)` : ' из 10'}${f.imdbRating && rs !== 'IMDb' ? ` · IMDb: <b>${esc(f.imdbRating)}</b>${f.imdbVotes ? ` (${fmtN(+f.imdbVotes)})` : ''}` : ''}</p>` : '<p class="muted"><small>Рейтинг смотрите на Кинопоиске или IMDb: мы не показываем цифры, которые не можем проверить.</small></p>'}
+      <div class="row">${f.url ? `<a class="btn ghost sm" target="_blank" rel="noopener" href="${esc(safeUrl(f.url))}">Википедия</a>` : ''}${/^tt\d+$/.test(f.imdb || '') ? `<a class="btn ghost sm" target="_blank" rel="noopener" href="https://www.imdb.com/title/${esc(f.imdb)}/">IMDb</a>` : ''}
+      <a class="btn ghost sm" target="_blank" rel="noopener" href="${esc(kpLink)}">Кинопоиск</a></div>
+      <p class="muted"><small>${note}</small></p>`;
   },
   track() {
     const t = mix('tracks', D.tracks, 1)[0]; const q = encodeURIComponent(t.a + ' ' + t.t);
