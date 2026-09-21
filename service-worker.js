@@ -5,7 +5,7 @@
    • Внешние API (Википедия, rss2json): сеть с таймаутом, при сбое — последний кэш.
    • Снимки по датам за 7 дней хранит само приложение (localStorage).
    ===================================================================== */
-const VERSION = 'gd-v1';
+const VERSION = 'gd-v2';
 const SHELL = `${VERSION}-shell`, API = `${VERSION}-api`;
 const FILES = ['./', './index.html', './app.js', './data.js', './manifest.json',
   './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'];

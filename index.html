@@ -30,7 +30,7 @@
 :root[data-theme="light"]{
   --bg:#F7F7F4; --bg2:#EFEFEA; --card:#FFFFFF; --line:#DEDED6;
   --text:#17171C; --muted:#585866;
-  --amber:#B36B00; --amber-ink:#FFFFFF; --emerald:#1B8A4B; --danger:#C0392B;
+  --amber:#925600; --amber-ink:#FFFFFF; --emerald:#1B8A4B; --danger:#C0392B;
   --shadow:0 1px 2px rgba(20,20,30,.08),0 8px 24px rgba(20,20,30,.08);
 }
 *{box-sizing:border-box}
@@ -126,7 +126,7 @@ ul.clean{padding-left:1.1em;margin:.4em 0}
 .week div{flex:1;background:var(--bg2);border-radius:6px;position:relative;min-height:6px}
 .week div i{position:absolute;bottom:0;left:0;right:0;background:var(--emerald);border-radius:6px}
 .badge{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:6px 0;display:flex;gap:10px;align-items:center}
-.badge.on{border-color:var(--emerald)} .badge:not(.on){opacity:.6}
+.badge.on{border-color:var(--emerald)} .badge:not(.on){border-style:dashed}
 
 /* Появление секций: одна скромная анимация при загрузке (отключается для reduced-motion) */
 .card{animation:up .35s ease both}
@@ -151,6 +151,35 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
   .card{box-shadow:none;break-inside:avoid;animation:none}
   main{max-width:none;padding:0}
 }
+
+/* ===================== v2: крупные зоны нажатия, SVG-иконки, режим «Сессия» ===================== */
+.iconbtn{min-width:44px;height:44px;padding:0 10px}
+.iconbtn svg,.tabbar svg,.side svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.iconbtn[aria-pressed="true"] svg{fill:currentColor}
+.btn{min-height:44px} .btn.sm{min-height:44px;padding:8px 14px;display:inline-flex;align-items:center}
+.chk{min-height:44px} .chk input{width:24px;height:24px}
+.chip{min-height:44px;display:inline-flex;align-items:center}
+.tabbar a{font-size:.75rem;min-height:56px;justify-content:center}
+.tabbar .ic{display:flex}
+.side a .ic{display:flex}
+.tag{font-size:.8rem}
+.modebar{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 4px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:var(--card)}
+.seg button{border:0;background:transparent;padding:0 14px;min-height:44px;cursor:pointer;font-weight:600;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--amber);color:var(--amber-ink)}
+.stepline{color:var(--muted);margin:6px 0 0;font-size:.9rem}
+.navrow{display:flex;gap:10px;position:sticky;bottom:calc(72px + env(safe-area-inset-bottom,0px));padding:14px 0 10px;z-index:5;background:linear-gradient(to top,var(--bg) 65%,transparent)}
+.navrow .btn{flex:1;justify-content:center}
+.navrow .btn[disabled]{opacity:.4;cursor:default}
+.dialog{background:var(--bg2);border-radius:var(--radius-s);padding:6px 14px;margin:8px 0}
+.dialog p{margin:.5em 0}
+.taskbox{border:1px solid var(--amber);border-radius:var(--radius-s);padding:12px;margin:10px 0}
+.taskbox.done{border-color:var(--emerald)}
+.done-card{border-color:var(--emerald)}
+@media(min-width:900px){.navrow{bottom:12px}}
+small{font-size:.8125rem}
+.card h2.h3{font-size:1.05rem;font-weight:650} /* не мельче 13 px: браузерное «smaller» внутри мелких блоков давало 11 px */
+@media print{.modebar,.navrow,.stepline{display:none!important}}
 </style>
 </head>
 <body>
@@ -164,8 +193,8 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
     <header class="top" role="banner">
       <span class="brand"><i aria-hidden="true"></i><b class="bt">Ближе<span class="more"> к людям</span></b></span>
       <input id="q" class="search" type="search" placeholder="Поиск…" aria-label="Поиск по содержимому" autocomplete="off">
-      <button class="iconbtn" id="lucky" title="Мне повезло" aria-label="Мне повезло: случайный материал">🎲</button>
-      <button class="iconbtn" id="themeBtn" title="Тема" aria-label="Переключить тему">🌓</button>
+      <button class="iconbtn" id="lucky" title="Мне повезло" aria-label="Мне повезло: случайный материал"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1"/><circle cx="15.5" cy="15.5" r="1"/><circle cx="15.5" cy="8.5" r="1"/><circle cx="8.5" cy="15.5" r="1"/></svg></button>
+      <button class="iconbtn" id="themeBtn" title="Тема" aria-label="Переключить тему"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>
     </header>
     <main id="view" tabindex="-1" aria-live="polite"></main>
   </div>
