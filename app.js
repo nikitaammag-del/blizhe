@@ -59,7 +59,15 @@ const isFav = id => S.fav.some(f => f.id === id);
 const dayRec = d => (S.days[d] ||= { done: {}, notes: {}, task: '' });
 
 /* ---------- Ежедневная подборка: daily.json собирает сервер (GitHub Actions), см. tools/build-daily.mjs ---------- */
-let DAILY = (() => { try { return JSON.parse(localStorage.getItem('gd:daily')) || null; } catch (e) { return null; } })();
+/* Тематический фильтр (blocklist.js): материалы о военном конфликте не показываем, даже если они пришли в старой подборке */
+const blk = t => typeof BLOCK !== 'undefined' && BLOCK.test(t), blkCore = t => typeof BLOCK !== 'undefined' && BLOCK.core(t);
+const cleanDaily = j => {
+  if (!j || typeof j !== 'object') return j;
+  if (Array.isArray(j.news)) j.news = j.news.filter(x => !blk((x.t || '') + ' ' + (x.s || '')));
+  ['jokes', 'stories', 'quotes'].forEach(k => { if (Array.isArray(j[k])) j[k] = j[k].filter(x => !blk(x.t || '')); });
+  return j;
+};
+let DAILY = (() => { try { return cleanDaily(JSON.parse(localStorage.getItem('gd:daily'))) || null; } catch (e) { return null; } })();
 /* Подборка годится для «сегодня» с допуском ±1 день (разные часовые пояса) */
 const lessonNow = () => (dailyOk() && DAILY.lesson && DAILY.lesson.topic ? DAILY.lesson : null); // урок дня из подборки (если есть)
 const dailyOk = () => !!(DAILY && DAILY.date && Math.abs(dayNum(DAILY.date) - dayNum(viewDate)) <= 1);
@@ -69,7 +77,7 @@ async function fetchDaily() {
   try {
     const j = await fetchJSON('daily.json?d=' + dstr(), 6000); if (!j || !(j.v >= 1) || !j.date) return;
     const changed = !DAILY || DAILY.date !== j.date || DAILY.generated !== j.generated;
-    DAILY = j; try { localStorage.setItem('gd:daily', JSON.stringify(j)); } catch (e) {}
+    DAILY = cleanDaily(j); try { localStorage.setItem('gd:daily', JSON.stringify(j)); } catch (e) {}
     /* Перерисовываем, только если пользователь сейчас ничего не вводит */
     if (changed && currentRoute() === 'today' && !/^(TEXTAREA|INPUT)$/.test((document.activeElement || {}).tagName)) render();
   } catch (e) { /* подборки нет или сеть недоступна — работаем на локальной базе */ }
@@ -289,6 +297,7 @@ function lessonHtml(L) {
   return `${stale}<p class="meta"><span class="tag amber">День ${esc(L.day)} из ${esc(L.of)}</span><span class="tag">${esc(L.block)}</span></p><h3>${esc(L.topic)}</h3>
     <p>${esc(L.situation)}</p><div class="dialog">${(L.dialog || []).map(x => `<p>${esc(x)}</p>`).join('')}</div>
     <h3>Разбор</h3><ul class="clean">${(L.breakdown || []).map(x => `<li>${esc(x)}</li>`).join('')}</ul>
+    ${(L.phrases || []).length ? `<h3>Фразы, которые можно взять</h3><ul class="clean">${L.phrases.map(x => `<li>«${esc(x)}»</li>`).join('')}</ul>` : ''}
     <h3>Вопросы для разговора</h3><ul class="clean">${(L.questions || []).map(x => `<li>${esc(x)}</li>`).join('')}</ul>
     <h3>Задание дня</h3><p>${esc(L.task)}</p>${taskBox(L.task)}
     <p class="muted"><small>Учебный пример составлен нейросетью (${esc(L.source || 'GigaChat')}) по программе курса: это не запись реального разговора.</small></p>`;
@@ -349,14 +358,14 @@ async function loadEvents(date) {
   const rid = renderId; const box = () => $('#ev-body'); const [, m, d] = date.split('-'); let list = null, mode = 'live';
   try {
     const j = await fetchJSON(`https://ru.wikipedia.org/api/rest_v1/feed/onthisday/events/${m}/${d}`);
-    list = (j.events || []).filter(e => e.text && e.year).map(e => { const p = (e.pages || [])[0] || {};
+    list = (j.events || []).filter(e => e.text && e.year && !blkCore(e.text + ' ' + (((e.pages || [])[0] || {}).extract || ''))).map(e => { const p = (e.pages || [])[0] || {};
       return { y: e.year, e: e.text, ex: p.extract || '', url: p.content_urls && p.content_urls.desktop && p.content_urls.desktop.page, w: (e.pages || []).length }; });
     const sc = x => x.w + (TOPIC.test(x.e) ? 3 : 0); // приоритетные темы выше в списке
     list = list.sort((a, b) => sc(b) - sc(a)).slice(0, 3).sort((a, b) => a.y - b.y);
     if (!list.length) throw new Error('empty');
     snapSet(date, 'events', list);
   } catch (e) {
-    list = snapGet(date, 'events'); mode = 'snap';
+    list = (snapGet(date, 'events') || []).filter(x => !blkCore((x.e || '') + ' ' + (x.ex || ''))); if (!list.length) list = null; mode = 'snap';
     if (!list) { mode = 'archive'; const md = date.slice(5); let a = D.history.filter(x => x.d === md);
       if (!a.length) a = pick(D.history, 3, 5); list = a.map(x => ({ y: x.y, e: x.e, why: x.why, impact: x.impact, ad: x.d })); }
   }
@@ -383,7 +392,7 @@ async function loadNews(date) {
     return;
   }
   const res = await Promise.allSettled(FEEDS.map(f => fetchJSON('https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent(f.u))));
-  res.forEach((r, i) => { if (r.status === 'fulfilled' && r.value.items) r.value.items.slice(0, FEEDS[i].take + 2).filter(x => passes(x.title || '')).slice(0, FEEDS[i].take).forEach(x =>
+  res.forEach((r, i) => { if (r.status === 'fulfilled' && r.value.items) r.value.items.slice(0, FEEDS[i].take + 2).filter(x => passes(x.title || '') && !blk((x.title || '') + ' ' + (x.description || ''))).slice(0, FEEDS[i].take).forEach(x =>
     items.push({ src: FEEDS[i].n, t: stripHtml(x.title), s: clip(stripHtml(x.description || x.content), 260), l: x.link, d: x.pubDate })); });
   if (items.length) snapSet(date, 'news', items);
   else { items = snapGet(date, 'news') || []; mode = items.length ? 'snap' : 'none'; }
