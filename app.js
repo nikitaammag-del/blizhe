@@ -27,7 +27,7 @@ const safeUrl = u => /^https?:\/\/[^\s"'<>]+$/i.test(String(u || '').trim()) ? S
 /* Картинки: только с Викисклада (свободные лицензии), с подписью и ссылкой на страницу файла */
 const safeImg = u => (/^https:\/\/upload\.wikimedia\.org\/wikipedia\/commons\/[^\s"'<>]+$/.test(String(u || '').trim()) ? String(u).trim() : '');
 const commonsPage = u => { const m = String(u || '').match(/\/wikipedia\/commons\/(?:thumb\/)?[0-9a-f]\/[0-9a-f]{2}\/([^/]+)/); return m ? 'https://commons.wikimedia.org/wiki/File:' + m[1] : ''; };
-const figCredit = u => (commonsPage(u) ? `<small class="muted">Фото: <a href="${esc(commonsPage(u))}" target="_blank" rel="noopener">Wikimedia Commons</a> (автор и лицензия — по ссылке)</small>` : '<small class="muted">Фото: Wikimedia Commons</small>');
+const figCredit = u => (commonsPage(u) ? `<small class="muted">Фото: <a href="${esc(commonsPage(u))}" target="_blank" rel="noopener noreferrer">Wikimedia Commons</a> (автор и лицензия — по ссылке)</small>` : '<small class="muted">Фото: Wikimedia Commons</small>');
 /* Диалог урока в виде переписки: реплики «Имя: текст» — пузырями слева и справа */
 function chatHtml(lines) {
   const msgs = [];
@@ -183,7 +183,8 @@ const passes = t => !D.stopWords.some(w => t.toLowerCase().includes(w)); // фи
 /* =====================================================================
    ОТРИСОВКА ЭКРАНОВ
    ===================================================================== */
-const actions = it => `<button class="iconbtn" data-act="fav" data-id="${it.id}" aria-pressed="${isFav(it.id)}" aria-label="Добавить в избранное">${ic('fav')}</button><button class="iconbtn" data-act="copy" data-id="${it.id}" aria-label="Копировать">${ic('copy')}</button>`;
+const actions = it => { const ctx = clip((it.text || '').replace(/\s+/g, ' '), 40) || clip((it.meta || TYPES[it.type] || it.type || '') + '', 40); // берём сам текст карточки (у него всегда своя формулировка), а не общую подпись вроде «Wikipedia» — иначе кнопки на разных карточках звучат для скрин-ридера одинаково
+  return `<button class="iconbtn" data-act="fav" data-id="${it.id}" aria-pressed="${isFav(it.id)}" aria-label="Добавить в избранное: ${esc(ctx)}">${ic('fav')}</button><button class="iconbtn" data-act="copy" data-id="${it.id}" aria-label="Копировать: ${esc(ctx)}">${ic('copy')}</button>`; };
 const empty = (ic, txt, btn = '') => `<div class="empty"><span class="ic" aria-hidden="true">${ic}</span><p>${txt}</p>${btn}</div>`;
 
 function greeting() {
@@ -221,7 +222,7 @@ const BODY = {
       const pic = q.img && safeImg(q.img.src) ? `<img class="portrait" src="${esc(safeImg(q.img.src))}" alt="Портрет: ${esc(q.a)}" loading="lazy" width="84" height="84" onerror="this.remove()">` : '';
       return `<div class="item">${pic}<p class="quote">«${esc(q.t)}»</p>
         <p class="quote-by">${esc(q.a)}${q.dis ? ' <span class="tag amber">приписывается</span>' : ''}</p>
-        <p class="meta muted"><small>Источник: ${esc(q.src)}${q.url ? ` · <a href="${esc(safeUrl(q.url))}" target="_blank" rel="noopener">страница автора</a>` : ''}</small></p>
+        <p class="meta muted"><small>Источник: ${esc(q.src)}${q.url ? ` · <a href="${esc(safeUrl(q.url))}" target="_blank" rel="noopener noreferrer">страница автора</a>` : ''}</small></p>
         ${pic ? `<p class="meta">${figCredit(q.img.src)}</p>` : ''}
         ${anniv ? `<p><span class="tag amber">${esc(anniv)}</span></p>` : ''}
         ${q.note ? `<p>${esc(q.note)}</p>` : ''}
@@ -232,7 +233,7 @@ const BODY = {
     const js = mix('jokes', D.jokes.filter(j => passes(j.t)), 2);
     const st = mix('stories', D.stories.filter(j => passes(j.t)), 1)[0];
     const lab = k => kindLab(k);
-    let h = js.map(j => { const it = mk('joke', j.t, lab(j.kind)); return `<div class="item"><p style="white-space:pre-line">${esc(j.t)}</p><div class="row"><span class="tag ${j.kind === 'orig' ? 'amber' : ''}">${lab(j.kind)}</span>${j.url ? `<a class="btn ghost sm" href="${esc(safeUrl(j.url))}" target="_blank" rel="noopener">Источник: anekdot.ru</a>` : ''}${actions(it)}</div></div>`; }).join('');
+    let h = js.map(j => { const it = mk('joke', j.t, lab(j.kind)); return `<div class="item"><p style="white-space:pre-line">${esc(j.t)}</p><div class="row"><span class="tag ${j.kind === 'orig' ? 'amber' : ''}">${lab(j.kind)}</span>${j.url ? `<a class="btn ghost sm" href="${esc(safeUrl(j.url))}" target="_blank" rel="noopener noreferrer">Источник: anekdot.ru</a>` : ''}${actions(it)}</div></div>`; }).join('');
     if (st) { const it = mk('joke', st.t, 'Смешная история дня'); h += `<div class="item"><h3>Смешная история дня</h3><p style="white-space:pre-line">${esc(st.t)}</p><div class="row"><span class="tag amber">${lab(st.kind)}</span>${actions(it)}</div></div>`; }
     return h + '<p class="muted"><small>Анекдоты берутся из официальных лент «Анекдоты из России» (anekdot.ru), права на тексты принадлежат их владельцам. Фильтр убирает мат, оскорбления и политику; вкусы у людей разные.</small></p>';
   },
@@ -273,7 +274,7 @@ const BODY = {
   word() {
     const w = mix('words', D.words, 1)[0]; const it = mk('word', `${w.w} — ${w.m}`, w.src);
     return `<p class="quote" style="font-size:1.5rem">${esc(w.w)}</p><p><b>Значение:</b> ${esc(w.m)}</p>${w.e ? `<p><b>Происхождение:</b> ${esc(w.e)}</p>` : ''}
-      ${w.ex ? `<p><b>Пример:</b> <i>${esc(w.ex)}</i></p>` : ''}<p class="muted"><small>Источник: ${esc(w.src)}${w.url ? ` · <a href="${esc(safeUrl(w.url))}" target="_blank" rel="noopener">статья</a>` : ''}. Точные формулировки сверяйте со словарями.</small></p><div class="row">${actions(it)}</div>`;
+      ${w.ex ? `<p><b>Пример:</b> <i>${esc(w.ex)}</i></p>` : ''}<p class="muted"><small>Источник: ${esc(w.src)}${w.url ? ` · <a href="${esc(safeUrl(w.url))}" target="_blank" rel="noopener noreferrer">статья</a>` : ''}. Точные формулировки сверяйте со словарями.</small></p><div class="row">${actions(it)}</div>`;
   },
   reflect() {
     const rec = dayRec(viewDate), L = lessonNow();
@@ -286,7 +287,7 @@ const BODY = {
   book() {
     const b = mix('books', D.books, 1)[0]; const q = encodeURIComponent(b.t + ' ' + b.a);
     const aff = CFG.AFF.litres ? `&lfrom=${encodeURIComponent(CFG.AFF.litres)}` : '';
-    return `<h3>${esc(b.t)}</h3><p class="muted">${esc(b.a)}${b.y ? ', ' + esc(b.y) : ''}</p>${b.orig ? `<p class="muted"><small>Оригинал: ${esc(b.orig)}</small></p>` : ''}${b.why ? `<p>${esc(b.why)}</p>` : ''}${b.rating ? `<p>Рейтинг Open Library: <b>${esc(b.rating)}</b> из 5 (${esc(b.count)} оценок)</p>` : ''}
+    return `<h3>${esc(b.t)}</h3><p class="muted">${esc(b.a)}${b.y ? ', ' + esc(b.y) : ''}</p>${b.orig ? `<p class="muted"><small>Оригинал: ${esc(b.orig)}</small></p>` : ''}${b.y && b.y < 1800 ? '<p class="muted"><small>Год — по данным Open Library: обычно это год конкретного издания, а не создания произведения; для очень старых книг он может отличаться от привычного.</small></p>' : ''}${b.why ? `<p>${esc(b.why)}</p>` : ''}${b.rating ? `<p>Рейтинг Open Library: <b>${esc(b.rating)}</b> из 5 (${esc(b.count)} оценок)</p>` : ''}
       <div class="row"><a class="btn ghost sm" target="_blank" rel="noopener sponsored" href="https://www.litres.ru/search/?q=${q}${aff}">Найти в ЛитРес</a>
       <a class="btn ghost sm" target="_blank" rel="noopener sponsored" href="https://www.ozon.ru/search/?text=${q}">Найти на Ozon</a></div>
       <p class="muted"><small>${CFG.AFF.litres ? 'Партнёрский материал: ссылка может содержать партнёрский идентификатор.' : 'Это обычные ссылки-поиск, без партнёрских идентификаторов.'}</small></p>`;
@@ -298,17 +299,17 @@ const BODY = {
     const note = f.src && /Cinemeta/.test(f.src) ? 'Каталог: Cinemeta (Stremio). Рейтинги: Кинопоиск и IMDb. Описание: Википедия (CC BY-SA).' : f.src === 'TMDB' ? 'Данные о фильме: TMDB. This product uses the TMDB API but is not endorsed or certified by TMDB.' : 'Данные: TVmaze, Википедия (CC BY-SA).';
     return `<h3>${esc(f.t)} <span class="muted">(${esc(f.y)})</span></h3>${f.orig ? `<p class="muted"><small>Оригинальное название: ${esc(f.orig)}</small></p>` : ''}${f.g ? `<p><span class="tag">${esc(f.g)}</span>${f.kind === 'series' ? '<span class="tag amber">сериал</span>' : ''}</p>` : ''}${f.why ? `<p>${esc(f.why)}</p>` : ''}
       ${f.rating ? `<p>${rs ? esc(rs) : 'Рейтинг'}: <b>${esc(f.rating)}</b>${f.count ? ` (${fmtN(+f.count)} голосов)` : ' из 10'}${f.imdbRating && rs !== 'IMDb' ? ` · IMDb: <b>${esc(f.imdbRating)}</b>${f.imdbVotes ? ` (${fmtN(+f.imdbVotes)})` : ''}` : ''}</p>` : '<p class="muted"><small>Рейтинг смотрите на Кинопоиске или IMDb: мы не показываем цифры, которые не можем проверить.</small></p>'}
-      <div class="row">${f.url ? `<a class="btn ghost sm" target="_blank" rel="noopener" href="${esc(safeUrl(f.url))}">Википедия</a>` : ''}${/^tt\d+$/.test(f.imdb || '') ? `<a class="btn ghost sm" target="_blank" rel="noopener" href="https://www.imdb.com/title/${esc(f.imdb)}/">IMDb</a>` : ''}
-      <a class="btn ghost sm" target="_blank" rel="noopener" href="${esc(kpLink)}">Кинопоиск</a></div>
+      <div class="row">${f.url ? `<a class="btn ghost sm" target="_blank" rel="noopener noreferrer" href="${esc(safeUrl(f.url))}">Википедия</a>` : ''}${/^tt\d+$/.test(f.imdb || '') ? `<a class="btn ghost sm" target="_blank" rel="noopener noreferrer" href="https://www.imdb.com/title/${esc(f.imdb)}/">IMDb</a>` : ''}
+      <a class="btn ghost sm" target="_blank" rel="noopener noreferrer" href="${esc(kpLink)}">Кинопоиск</a></div>
       <p class="muted"><small>${note}</small></p>`;
   },
   track() {
     const t = mix('tracks', D.tracks, 1)[0]; const q = encodeURIComponent(t.a + ' ' + t.t);
     return `<h3>${esc(t.t)}</h3><p class="muted">${esc(t.a)}</p><p>Жанр и настроение: ${esc(t.mood)}</p>
-      <div class="row"><a class="btn ghost sm" target="_blank" rel="noopener" href="https://music.yandex.ru/search?text=${q}">Яндекс Музыка</a>
-      <a class="btn ghost sm" target="_blank" rel="noopener" href="https://open.spotify.com/search/${q}">Spotify</a>
-      <a class="btn ghost sm" target="_blank" rel="noopener" href="https://www.youtube.com/results?search_query=${q}">YouTube</a>
-      ${t.url ? `<a class="btn ghost sm" target="_blank" rel="noopener" href="${esc(safeUrl(t.url))}">Deezer</a>` : ''}</div>`;
+      <div class="row"><a class="btn ghost sm" target="_blank" rel="noopener noreferrer" href="https://music.yandex.ru/search?text=${q}">Яндекс Музыка</a>
+      <a class="btn ghost sm" target="_blank" rel="noopener noreferrer" href="https://open.spotify.com/search/${q}">Spotify</a>
+      <a class="btn ghost sm" target="_blank" rel="noopener noreferrer" href="https://www.youtube.com/results?search_query=${q}">YouTube</a>
+      ${t.url ? `<a class="btn ghost sm" target="_blank" rel="noopener noreferrer" href="${esc(safeUrl(t.url))}">Deezer</a>` : ''}</div>`;
   },
   summary() {
     const rec = dayRec(viewDate); const n = Object.keys(rec.done).length; const st = streakInfo();
@@ -410,7 +411,7 @@ async function loadEvents(date) {
       ${x.why ? `<p><b>Почему важно:</b> ${esc(x.why)}</p><p><b>Влияние на мир:</b> ${esc(x.impact)}</p>` : ''}
       ${x.img && safeImg(x.img) ? `<figure class="evimg"><img src="${esc(safeImg(x.img))}" alt="Иллюстрация к событию: ${esc(clip(x.e, 80))}" loading="lazy" onerror="this.closest('figure').remove()">${figCredit(x.img)}</figure>` : ''}
       ${x.ex ? `<p class="muted"><small>${esc(clip(x.ex, 240))}</small></p>` : ''}
-      <div class="row">${actions(it)}${x.url ? `<a class="btn ghost sm" href="${esc(safeUrl(x.url))}" target="_blank" rel="noopener">Читать в Википедии</a>` : ''}</div></div>`; }).join('')
+      <div class="row">${actions(it)}${x.url ? `<a class="btn ghost sm" href="${esc(safeUrl(x.url))}" target="_blank" rel="noopener noreferrer">Читать в Википедии</a>` : ''}</div></div>`; }).join('')
     + (mode !== 'archive' ? '<p class="muted"><small>Источник: Википедия («В этот день»). Объяснения «почему важно» здесь не сочиняются: читайте статью по ссылке.</small></p>' : '');
 }
 
@@ -420,7 +421,7 @@ async function loadNews(date) {
   const rid = renderId; const box = () => $('#news-body'); let items = [], mode = 'live';
   if (dailyOk() && Array.isArray(DAILY.news) && DAILY.news.length) {
     if (!box()) return;
-    box().innerHTML = DAILY.news.map(x => `<div class="item"><h3><a href="${esc(safeUrl(x.l))}" target="_blank" rel="noopener">${esc(x.t)}</a></h3><p>${esc(x.s)}</p>
+    box().innerHTML = DAILY.news.map(x => `<div class="item"><h3><a href="${esc(safeUrl(x.l))}" target="_blank" rel="noopener noreferrer">${esc(x.t)}</a></h3><p>${esc(x.s)}</p>
       ${x.orig ? `<p class="meta muted"><small>Оригинал: ${esc(x.orig)}</small></p>` : ''}<p class="meta"><span class="tag">${esc(x.src)}</span><span class="tag">${esc(x.cat)}</span>${(x.tags || []).map(t => `<span class="tag amber">${esc(t)}</span>`).join('')}${x.tr ? `<span class="tag">перевод: ${esc(x.tr)}</span>` : ''}</p></div>`).join('')
       + '<p class="muted"><small>Подборка собрана автоматически из изданий и агентств и отранжирована по свежести, авторитету источника и совпадению тем в разных изданиях. Приоритет у новостей о России и об открытиях. Заголовок и анонс — из ленты издания; по политическим событиям сверяйтесь с несколькими источниками.</small></p>';
     return;
@@ -433,7 +434,7 @@ async function loadNews(date) {
   if (rid !== renderId || !box()) return;
   if (mode === 'none') { box().innerHTML = empty('📡', navigator.onLine ? 'Сегодня нет свежих данных. Не удалось загрузить новости.' : 'Нет соединения. Включи интернет — приложение загрузит программу дня.', '<button class="btn sm" data-act="reloadNews">Обновить</button>'); return; }
   box().innerHTML = (mode === 'snap' ? '<div class="banner">Показана сохранённая копия («Архив»). <button class="btn sm ghost" data-act="reloadNews">Обновить</button></div>' : '')
-    + items.map(x => `<div class="item"><h3><a href="${esc(safeUrl(x.l))}" target="_blank" rel="noopener">${esc(x.t)}</a></h3>
+    + items.map(x => `<div class="item"><h3><a href="${esc(safeUrl(x.l))}" target="_blank" rel="noopener noreferrer">${esc(x.t)}</a></h3>
       <p>${esc(x.s)}</p><p class="meta"><span class="tag">${esc(x.src)}</span>${x.d ? `<small class="muted">${esc(String(x.d).slice(0, 10))}</small>` : ''}</p></div>`).join('')
     + '<p class="muted"><small>Заголовок и суть — из анонса издания, без наших добавлений. «Почему важно» смотрите в оригинале.</small></p>';
 }
@@ -507,7 +508,7 @@ function viewSettings() {
       <div class="row"><button class="btn sm" data-act="challenge">Скопировать ссылку</button><button class="btn ghost sm" data-act="maxbot">Подключить MAX-бота</button></div></div>
     <div class="card"><h2>Данные</h2><p>Резервная копия хранится в файле. Ничего не отправляется на сервер.</p>
       <div class="row"><button class="btn sm" data-act="export">Экспорт данных</button><button class="btn ghost sm" data-act="import">Импорт</button><button class="btn ghost sm" data-act="reset">Стереть всё</button></div></div>
-    ${Object.values(CFG.DONATE).some(Boolean) ? `<div class="card"><h2>Поддержать проект</h2><div class="row">${Object.entries(CFG.DONATE).filter(([, v]) => v).map(([k, v]) => `<a class="btn ghost sm" href="${esc(v)}" target="_blank" rel="noopener">${esc(k)}</a>`).join('')}</div></div>` : ''}
+    ${Object.values(CFG.DONATE).some(Boolean) ? `<div class="card"><h2>Поддержать проект</h2><div class="row">${Object.entries(CFG.DONATE).filter(([, v]) => v).map(([k, v]) => `<a class="btn ghost sm" href="${esc(v)}" target="_blank" rel="noopener noreferrer">${esc(k)}</a>`).join('')}</div></div>` : ''}
     <div class="card"><h2>Источники данных</h2><ul class="clean"><li>События: Википедия (ru), REST API «On this day»</li><li>Новости: RSS N+1 и Naked Science через rss2json.com</li><li>Ежедневная подборка (daily.json): ${DAILY && DAILY.date ? esc(DAILY.date) + ', источников без ошибок: ' + Object.values(DAILY.sources || {}).filter(v => v === 'ok').length + ' из ' + Object.keys(DAILY.sources || {}).length : 'ещё не создана'}</li><li>Запасная база в data.js (если подборки нет)</li></ul>
       <p class="muted"><small>Если внешний источник не отвечает 8 секунд, показывается сохранённая копия или архив.</small></p></div>`;
 }
