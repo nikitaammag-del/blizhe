@@ -194,6 +194,7 @@ figure.illus svg{display:block;width:100%;height:auto;max-height:190px}
 .wb .weak{border-left:5px solid var(--danger)}.wb .better{border-left:5px solid var(--emerald)}
 .wb small{display:block;font-weight:700;margin-bottom:2px;color:var(--muted)}
 .wb .why{display:block;margin-top:4px;color:var(--muted);font-size:.9rem}
+mark.var{background:color-mix(in srgb,var(--amber) 28%,transparent);color:var(--text);border-radius:4px;padding:0 3px;font-weight:600}
 img.portrait{float:right;width:84px;height:84px;object-fit:cover;border-radius:14px;margin:0 0 6px 12px;border:1px solid var(--line);background:var(--bg2)}
 figure.evimg{margin:8px 0}figure.evimg img{display:block;width:100%;max-height:210px;object-fit:cover;border-radius:12px;border:1px solid var(--line);background:var(--bg2)}
 figure.evimg small{display:block;margin-top:4px}
@@ -234,6 +235,7 @@ small{font-size:.8125rem}
 
 <script src="blocklist.js"></script>
 <script src="illustrations.js"></script>
+<script type="module">import { TOPICS } from './tools/curriculum.mjs'; window.TOPICS = TOPICS;</script> <!-- темы годовой программы: нужны для поиска по курсу -->
 <script src="data.js"></script>
 <script src="app.js"></script>
 </body>

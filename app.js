@@ -19,6 +19,9 @@ const CFG = {
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+/* В промптах встречаются подстановки ${...} и {{...}} — это специально оставленные поля для своих данных, а не ошибка перевода. Подсвечиваем их, чтобы это было видно на глаз */
+const escVars = s => esc(s).replace(/\$\{[^}]*\}|\{\{[^}]*\}\}/g, m => `<mark class="var">${m}</mark>`);
+const hasVars = s => /\$\{[^}]*\}|\{\{[^}]*\}\}/.test(String(s || ''));
 /* Ссылка допускается только http(s): защита от javascript:-ссылок из внешних данных */
 const safeUrl = u => /^https?:\/\/[^\s"'<>]+$/i.test(String(u || '').trim()) ? String(u).trim() : '#';
 /* Картинки: только с Викисклада (свободные лицензии), с подписью и ссылкой на страницу файла */
@@ -237,7 +240,8 @@ const BODY = {
   prompt() {
     const P = dailyOk() && DAILY.prompts && DAILY.prompts[0]; if (!P || P.lang === 'en') return this.promptFallback();
     const it = mk('prompt', P.text, P.title + ' · ' + (P.src || '')), rec = dayRec(viewDate), A = P.analysis;
-    return `<h3>${esc(P.title)}</h3><pre class="prompt">${esc(P.text)}</pre>
+    return `<h3>${esc(P.title)}</h3><pre class="prompt">${escVars(P.text)}</pre>
+      ${hasVars(P.text) ? `<p class="muted"><small>Место вида <mark class="var">$&#123;так&#125;</mark> — впиши сюда своё: тему, число, контекст. Это не ошибка, а поле для заполнения — готовую версию сохрани в поле ниже.</small></p>` : ''}
       <div class="row">${actions(it)}<button class="btn sm" data-act="copy" data-id="${it.id}">Скопировать промпт</button></div>
       ${A ? `<h3>Какие приёмы здесь использованы</h3><ul class="clean">${A.methods.map(m => `<li>${esc(m)}</li>`).join('')}</ul>
       <h3>Как улучшить</h3><p>${esc(A.improve)}</p><h3>Типичная ошибка</h3><p>${esc(A.mistake)}</p><h3>Задание на 5 минут</h3><p>${esc(A.task)}</p>` : ''}
@@ -378,17 +382,21 @@ function updateProgress() {
 }
 
 /* ----- События дня: Wikipedia REST → снимок → архив ----- */
+const eventsCache = new Map(); // кэш на время сеанса: незачем заново грузить с сети при переходе «Назад/Дальше» по тем же датам
+const YEAR_PAGE = /^\d{3,4}(\s*(год|до\s*н\.?\s*э\.?))?$/i; // страница-заглушка вида «1981» — описание самого года, а не события
 async function loadEvents(date) {
   const rid = renderId; const box = () => $('#ev-body'); const [, m, d] = date.split('-'); let list = null, mode = 'live';
-  try {
+  if (eventsCache.has(date)) { list = eventsCache.get(date); mode = 'live'; }
+  else try {
     const j = await fetchJSON(`https://ru.wikipedia.org/api/rest_v1/feed/onthisday/events/${m}/${d}`);
-    list = (j.events || []).filter(e => e.text && e.year && !blkCore(e.text + ' ' + (((e.pages || [])[0] || {}).extract || ''))).map(e => { const p = (e.pages || [])[0] || {};
-      return { y: e.year, e: e.text, ex: p.extract || '', url: p.content_urls && p.content_urls.desktop && p.content_urls.desktop.page, w: (e.pages || []).length,
+    list = (j.events || []).filter(e => e.text && e.year && !blkCore(e.text + ' ' + (((e.pages || [])[0] || {}).extract || ''))).map(e => {
+      const pages = e.pages || []; const p = pages.find(pg => !YEAR_PAGE.test((pg.title || '').trim())) || pages[0] || {}; // берём не страницу-год, а статью о самом событии
+      return { y: e.year, e: e.text, ex: p.extract || '', url: p.content_urls && p.content_urls.desktop && p.content_urls.desktop.page, w: pages.length,
         img: !blk(e.text) && p.thumbnail && safeImg(p.thumbnail.source) ? p.thumbnail.source : '' }; }); // фото — только с Викисклада и только к событиям без «военных» слов
     const sc = x => x.w + (TOPIC.test(x.e) ? 3 : 0); // приоритетные темы выше в списке
     list = list.sort((a, b) => sc(b) - sc(a)).slice(0, 3).sort((a, b) => a.y - b.y);
     if (!list.length) throw new Error('empty');
-    snapSet(date, 'events', list);
+    eventsCache.set(date, list); snapSet(date, 'events', list);
   } catch (e) {
     list = (snapGet(date, 'events') || []).filter(x => !blkCore((x.e || '') + ' ' + (x.ex || ''))); if (!list.length) list = null; mode = 'snap';
     if (!list) { mode = 'archive'; const md = date.slice(5); let a = D.history.filter(x => x.d === md);
@@ -454,7 +462,7 @@ function viewLibrary() {
 
 /* ----- Избранное ----- */
 let favType = 'все';
-const TYPES = { quote: 'Цитаты', joke: 'Юмор', event: 'События', prompt: 'Промпты', word: 'Слова', book: 'Книги', tip: 'Хитрости' };
+const TYPES = { quote: 'Цитаты', joke: 'Юмор', event: 'События', prompt: 'Промпты', word: 'Слова', book: 'Книги', tip: 'Хитрости', topic: 'Тема курса', lesson: 'Сегодняшний урок' };
 function viewFav() {
   const list = S.fav.filter(f => favType === 'все' || f.type === favType);
   $('#view').innerHTML = `<h1>Избранное</h1><div class="chips" role="group" aria-label="Тип">${['все', ...Object.keys(TYPES)].map(t => `<button class="chip" data-act="favType" data-t="${t}" aria-pressed="${t === favType}">${t === 'все' ? 'Все' : TYPES[t]}</button>`).join('')}</div>`
@@ -499,8 +507,7 @@ function viewSettings() {
       <div class="row"><button class="btn sm" data-act="challenge">Скопировать ссылку</button><button class="btn ghost sm" data-act="maxbot">Подключить MAX-бота</button></div></div>
     <div class="card"><h2>Данные</h2><p>Резервная копия хранится в файле. Ничего не отправляется на сервер.</p>
       <div class="row"><button class="btn sm" data-act="export">Экспорт данных</button><button class="btn ghost sm" data-act="import">Импорт</button><button class="btn ghost sm" data-act="reset">Стереть всё</button></div></div>
-    <div class="card"><h2>Поддержать проект</h2><p class="muted">Ссылки появятся, когда вы укажете их в CFG (app.js).</p><div class="row">${Object.entries(CFG.DONATE).filter(([, v]) => v).map(([k, v]) => `<a class="btn ghost sm" href="${esc(v)}" target="_blank" rel="noopener">${esc(k)}</a>`).join('') || '<small class="muted">Пока не настроено.</small>'}</div>
-      <p class="muted"><small>Премиум-функции (PDF без рекламы, 500+ промптов) заложены архитектурно, но требуют сервера — в этапе 1 не активны.</small></p></div>
+    ${Object.values(CFG.DONATE).some(Boolean) ? `<div class="card"><h2>Поддержать проект</h2><div class="row">${Object.entries(CFG.DONATE).filter(([, v]) => v).map(([k, v]) => `<a class="btn ghost sm" href="${esc(v)}" target="_blank" rel="noopener">${esc(k)}</a>`).join('')}</div></div>` : ''}
     <div class="card"><h2>Источники данных</h2><ul class="clean"><li>События: Википедия (ru), REST API «On this day»</li><li>Новости: RSS N+1 и Naked Science через rss2json.com</li><li>Ежедневная подборка (daily.json): ${DAILY && DAILY.date ? esc(DAILY.date) + ', источников без ошибок: ' + Object.values(DAILY.sources || {}).filter(v => v === 'ok').length + ' из ' + Object.keys(DAILY.sources || {}).length : 'ещё не создана'}</li><li>Запасная база в data.js (если подборки нет)</li></ul>
       <p class="muted"><small>Если внешний источник не отвечает 8 секунд, показывается сохранённая копия или архив.</small></p></div>`;
 }
@@ -514,6 +521,13 @@ function viewSearch() {
   D.library.forEach(x => add('prompt', x.text, x.title)); S.myPrompts.forEach(x => add('prompt', x.text, 'Мой промпт'));
   D.words.forEach(x => add('word', `${x.w} — ${x.m}`, x.src)); D.history.forEach(x => add('event', `${x.y}: ${x.e}`, 'Архив'));
   D.tips.forEach(x => add('tip', x, 'Хитрость')); D.books.forEach(x => add('book', `${x.t} — ${x.a}`, 'Книга'));
+  if (typeof TOPICS !== 'undefined') TOPICS.forEach((x, i) => add('topic', x.topic, `Тема курса, блок «${x.block}» · день ${i + 1} из ${TOPICS.length}`));
+  if (dailyOk()) { const L = DAILY.lesson; if (L) { add('lesson', L.topic, `Сегодняшний урок · день ${L.day}`); add('lesson', L.situation, 'Сегодняшняя ситуация урока'); (L.phrases || []).forEach(x => add('lesson', x, 'Фраза сегодняшнего урока')); }
+    (DAILY.quotes || []).forEach(x => add('quote', `«${x.t}» — ${x.a}`, 'Сегодняшняя цитата'));
+    (DAILY.words || []).forEach(x => add('word', `${x.w} — ${x.m}`, 'Сегодняшнее слово'));
+    (DAILY.prompts || []).forEach(x => add('prompt', x.text, `Сегодняшний промпт: ${x.title}`));
+    (DAILY.news || []).forEach(x => add('event', x.t, 'Сегодняшняя новость'));
+    (DAILY.books || []).forEach(x => add('book', `${x.t} — ${x.a}`, 'Сегодняшняя книга')); }
   $('#view').innerHTML = `<h1>Поиск: «${esc(searchQ)}»</h1>` + (out.length ? out.slice(0, 40).map(f => `<div class="card"><span class="tag">${esc(TYPES[f.type] || f.type)}</span><p style="white-space:pre-wrap">${esc(f.text)}</p><p class="meta muted"><small>${esc(f.meta)}</small></p><div class="row">${actions(f)}</div></div>`).join('') : `<div class="card">${empty('🔍', 'Ничего не найдено. Попробуй другое слово.')}</div>`);
 }
 
