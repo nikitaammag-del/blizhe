@@ -317,7 +317,7 @@ async function buildBooks(seen) {
       if (!HAS_LLM) continue;
       const tr = await toRussian([{ title: t, text: a }], 'book'); if (!tr[0]) continue;
       if (cyr(t) < 0.5) { if (cyr(tr[0].title) < 0.5) continue; orig = t; t = tr[0].title; }
-      if (cyr(a) < 0.5) { if (cyr(tr[0].text) >= 0.5) a = tr[0].text; else continue; }
+      if (cyr(a) < 0.5) { if (cyr(tr[0].text) >= 0.5) a = tr[0].text.replace(/\s*\([^)]*\)\s*$/, ''); else continue; } // убираем «(альтернативное имя)», если модель его добавила
     }
     const y = await realPublishYear(b.url, b.y); // год у самого «произведения» в Open Library иногда испорчен; берём минимальный год из реальных изданий
     return [{ ...b, t, a, y, ...(orig ? { orig } : {}) }];
@@ -644,6 +644,7 @@ export function parseLesson(txt) {
   const all = [sit, ...dialog, ...breakdown, ...phrases, task, ...questions, habit, evening].join(' '); const errs = [];
   /* «Лекция о теме» вместо живой сцены и задание без срока — брак: пусть модель перепишет */
   if (dialog.some(l => /сегодня (мы )?(поговорим|обсудим|разберём|разберем)|в этом (уроке|диалоге)|тема (нашего|этого)|давайте (попробуем|обсудим|разберём|разберем)|как думаете, стоит ли/i.test(l))) errs.push('диалог-лекция');
+  if (breakdown.some(l => /^слабо:?/i.test(l) && !/→|->|—>|➜/.test(l))) errs.push('«Слабо» без пары «Лучше»'); // модель начала приём и не закончила
   if (!/\d|минут|секунд|один раз|каждый|сегодня/i.test(task)) errs.push('задание без срока');
   if (sit.length < 30 || sit.length > 450) errs.push('ситуация'); if (dialog.length < 5) errs.push('диалог'); if (breakdown.length < 3) errs.push('разбор');
   if (task.length < 20 || task.length > 320) errs.push('задание'); if (questions.length < 3) errs.push('вопросы'); if (habit.length < 10) errs.push('привычка'); if (evening.length < 10) errs.push('вечерний вопрос');
