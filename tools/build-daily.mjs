@@ -93,6 +93,7 @@ export function parseWikiquote(wt, author) {
     const m = lines[i].match(/^\*\s+([^*].*)$/); if (!m || skip) continue;
     const text = wikiClean(m[1]).replace(/^[—–-]\s*/, '').replace(/^[«"]|[»"]$/g, '').trim();
     if (/^:|^(Категория|Category|Файл|File|Шаблон|Template):/i.test(text)) continue; // служебные ссылки Википедии — не цитаты
+    if (/^(См\.|See |Смотрите|Смотри )/i.test(text) || /^в отдельн\w* категори/i.test(text)) continue; // указатель «смотри в другом месте» — не цитата
     /* Подпункты «**» бывают источником, а бывают комментарием редакторов («Реальная цитата…», «Эта цитата восходит…») — комментарий не источник и говорит о сомнительной атрибуции */
     const NOTE = /^(Реальная цитата|Эта цитата|Приписыва|См\.|Оригинал|На самом деле|Ошибочно|Фактически|Цитата (не|неточно))/i; let src = '', j = i + 1, doubtful = false;
     while (lines[j] && /^\*\*/.test(lines[j])) { const s2 = wikiClean(lines[j].replace(/^\*+\s*/, '')); if (NOTE.test(s2)) doubtful = true; else if (s2) src += (src ? '; ' : '') + s2; j++; }
@@ -293,6 +294,14 @@ async function buildWord(seen) {
    5. КНИГИ — Open Library. Рейтинг = средняя оценка × ln(1 + число оценок). Минимум 5 оценок.
    ===================================================================== */
 const SUBJECTS = ['science', 'physics', 'artificial intelligence', 'mathematics', 'history of science', 'communication', 'psychology', 'philosophy', 'biography', 'business'];
+export async function realPublishYear(workUrl, fallback) {
+  try {
+    const key = (workUrl.match(/\/works\/(OL\w+W)/) || [])[1]; if (!key) return fallback;
+    const ed = await getJSON(`https://openlibrary.org/works/${key}/editions.json?limit=50`);
+    const years = (ed.entries || []).map(e => { const m = String(e.publish_date || '').match(/(1[4-9]\d{2}|20\d{2})/); return m ? +m[1] : null; }).filter(Boolean);
+    return years.length ? Math.min(...years) : fallback;
+  } catch (e) { return fallback; }
+}
 async function buildBooks(seen) {
   const subj = rot(SUBJECTS, 1)[0]; let docs = [], lg = 'rus';
   for (const lang of ['rus', 'eng']) { const j = await getJSON(`https://openlibrary.org/search.json?q=${encodeURIComponent(`subject:"${subj}" language:${lang}`)}&sort=rating&limit=30&fields=key,title,author_name,first_publish_year,ratings_average,ratings_count`);
@@ -310,7 +319,8 @@ async function buildBooks(seen) {
       if (cyr(t) < 0.5) { if (cyr(tr[0].title) < 0.5) continue; orig = t; t = tr[0].title; }
       if (cyr(a) < 0.5) { if (cyr(tr[0].text) >= 0.5) a = tr[0].text; else continue; }
     }
-    return [{ ...b, t, a, ...(orig ? { orig } : {}) }];
+    const y = await realPublishYear(b.url, b.y); // год у самого «произведения» в Open Library иногда испорчен; берём минимальный год из реальных изданий
+    return [{ ...b, t, a, y, ...(orig ? { orig } : {}) }];
   }
   throw new Error('у лучших книг нет русского названия или имени автора, а перевод недоступен — остаётся русская база');
 }
@@ -585,9 +595,10 @@ async function analyzePrompt(it) {
 ПРОМПТ «${it.title}»:
 ${it.text}`, 1500));
   const b = parseBlocks(out, ['ПРИЁМЫ', 'УЛУЧШИТЬ', 'ОШИБКА', 'ЗАДАНИЕ']);
-  const a = { methods: bullets(b['ПРИЁМЫ']).slice(0, 4), improve: oneLine(b['УЛУЧШИТЬ']), mistake: oneLine(b['ОШИБКА']), task: oneLine(b['ЗАДАНИЕ']) };
+  const a = { methods: bullets(b['ПРИЁМЫ']).filter(x => !/<[^<>]{3,80}>/.test(x)).slice(0, 4), improve: oneLine(b['УЛУЧШИТЬ']), mistake: oneLine(b['ОШИБКА']), task: oneLine(b['ЗАДАНИЕ']) }; // строки с незаполненной заготовкой «<...>» из шаблона — не приёмы, а мусор
   const all = [...a.methods, a.improve, a.mistake, a.task].join(' ');
   if (a.methods.length < 2 || a.improve.length < 15 || a.mistake.length < 15 || a.task.length < 15) throw new Error('разбор неполный');
+  if (/<[^<>]{3,80}>/.test(all)) throw new Error('разбор содержит незаполненный образец из шаблона');
   if (cyr(all) < 0.8 || !safeText(all)) throw new Error('разбор не прошёл проверку языка');
   return a;
 }
