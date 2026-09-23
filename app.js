@@ -69,7 +69,7 @@ const pick = (arr, n = 1, salt = 0) => { const out = []; const b = dayNum(viewDa
 /* ---------- Хранилище ---------- */
 const KEY = 'gd:v1';
 const defaults = () => ({ v: 1, uid: uuid(), onboarded: false, name: '', time: '09:00', theme: 'dark', font: 100, lang: 'ru',
-  notify: false, mode: 'session', len: 'normal', days: {}, fav: [], myPrompts: [], snap: {}, ach: {}, stats: { sessions: 0, totalSec: 0 }, friend: null });
+  notify: false, mode: 'session', len: 'normal', days: {}, fav: [], myPrompts: [], snap: {}, ach: {}, stats: { sessions: 0, totalSec: 0 }, friend: null, freezes: 1, freezeAt: 0 }); // freezes — запас «заморозок серии» (пропуск одного дня не обнуляет серию); freezeAt — до какого рубежа серии уже выдана награда
 let S = (() => { try { const r = JSON.parse(localStorage.getItem(KEY)); if (r && r.v === 1) return Object.assign(defaults(), r); } catch (e) {} return defaults(); })();
 function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toast('Не удалось сохранить: память браузера заполнена. Сделайте экспорт данных.'); } }
 
@@ -80,7 +80,8 @@ let searchQ = '';
 const REG = {}; // реестр карточек для избранного/копирования: id → {id,type,text,meta}
 const mk = (type, text, meta = '') => { const id = hid(type + text); REG[id] = { id, type, text, meta }; return REG[id]; };
 const isFav = id => S.fav.some(f => f.id === id);
-const dayRec = d => (S.days[d] ||= { done: {}, notes: {}, task: '' });
+const dayRec = d => (S.days[d] ||= { done: {}, notes: {}, task: '', mood: null });
+const MOODS = [{ v: 'easy', e: '😊', t: 'Легко' }, { v: 'ok', e: '🙂', t: 'Обычно' }, { v: 'hard', e: '😕', t: 'Трудно' }, { v: 'anx', e: '😰', t: 'Тревожно' }];
 
 /* ---------- Ежедневная подборка: daily.json собирает сервер (GitHub Actions), см. tools/build-daily.mjs ---------- */
 /* Тематический фильтр (blocklist.js): материалы о военном конфликте не показываем, даже если они пришли в старой подборке */
@@ -125,13 +126,25 @@ const ROUTES = [['today', 'Сегодня'], ['library', 'Библиотека']
 
 /* ---------- Геймификация ---------- */
 const LEVELS = [['Новичок', 0], ['Читатель', 100], ['Эрудит', 400], ['Мудрец', 1000], ['Гений', 2500]];
+function applyStreakFreeze() {
+  const y1 = new Date(); y1.setDate(y1.getDate() - 1); const y1s = dstr(y1);
+  const y2 = new Date(); y2.setDate(y2.getDate() - 2); const y2s = dstr(y2);
+  const hadDay = s => S.days[s] && (Object.keys(S.days[s].done).length > 0 || S.days[s].frozen);
+  if (S.freezes > 0 && !hadDay(y1s) && hadDay(y2s)) {
+    S.days[y1s] = { done: {}, notes: {}, task: '', mood: null, frozen: true };
+    S.freezes--; save();
+    toast('❄️ Пропущенный день покрыт заморозкой серии. Серия продолжается!');
+  }
+}
 function streakInfo() {
-  const has = s => S.days[s] && Object.keys(S.days[s].done).length > 0;
+  const has = s => S.days[s] && (Object.keys(S.days[s].done).length > 0 || S.days[s].frozen);
   const keys = Object.keys(S.days).filter(has).sort();
   let best = 0, run = 0, prev = null;
   keys.forEach(k => { run = prev && dayNum(k) - dayNum(prev) === 1 ? run + 1 : 1; best = Math.max(best, run); prev = k; });
   let cur = 0; const d = new Date(); if (!has(dstr(d))) d.setDate(d.getDate() - 1);
   while (has(dstr(d))) { cur++; d.setDate(d.getDate() - 1); }
+  const milestone = Math.floor(cur / 7);
+  if (milestone > 0 && milestone > S.freezeAt && S.freezes < 3) { S.freezeAt = milestone; S.freezes++; save(); toast('❄️ Серия ' + cur + ' дней! Заморозка серии в запасе: ' + S.freezes); }
   return { cur, best };
 }
 function points() {
@@ -280,7 +293,9 @@ const BODY = {
     const rec = dayRec(viewDate), L = lessonNow();
     const qs = [L && L.evening ? L.evening : D.reflect[0], D.reflect[1], D.reflect[2]];
     const tr = rec.tr && rec.tr.done ? `<p class="muted">Задание дня: ${esc(rec.tr.score)}/5${rec.tr.note ? ' · ' + esc(rec.tr.note) : ''}</p>` : '';
-    return tr + qs.map((q, i) => `<label class="f" for="note${i}">${esc(q)}</label>
+    const mood = `<label class="f">Как прошёл день в общении?</label>
+      <div class="chips" role="group" aria-label="Настроение дня">${MOODS.map(m => `<button class="chip" data-act="mood" data-v="${m.v}" aria-pressed="${rec.mood === m.v}">${m.e} ${esc(m.t)}</button>`).join('')}</div>`;
+    return tr + mood + qs.map((q, i) => `<label class="f" for="note${i}">${esc(q)}</label>
       <textarea id="note${i}" data-note="${i}" placeholder="Напиши хотя бы одну мысль — она сохранится здесь">${esc(rec.notes[i] || '')}</textarea>`).join('');
   },
   habit() { const L = lessonNow(); return `<p class="quote">${esc(L && L.habit ? L.habit : pick(D.habits, 1)[0])}</p><p class="muted">Отметь «Сделано!», когда выполнишь.</p>`; },
@@ -479,12 +494,13 @@ function viewProgress() {
   const fav = Object.entries(cnt).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => `${(SECTIONS.find(s => s.id === k) || {}).t} (${v})`).join(', ') || 'пока нет данных';
   const avg = S.stats.sessions ? Math.round(S.stats.totalSec / S.stats.sessions / 60 * 10) / 10 : 0;
   const week = []; for (let i = 6; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); const k = dstr(d); week.push({ k, n: S.days[k] ? Object.keys(S.days[k].done).length : 0, l: d.toLocaleDateString('ru-RU', { weekday: 'short' }) }); }
+  const moodRow = week.map(x => { const m = MOODS.find(mm => mm.v === (S.days[x.k] || {}).mood); return `<span title="${esc(x.l)}">${m ? m.e : '·'}</span>`; }).join('');
   const diary = Object.entries(S.days).filter(([, r]) => r.tr && r.tr.done).sort((a, b) => b[0].localeCompare(a[0])).slice(0, 14);
   const diaryHtml = `<div class="card"><h2>Дневник побед</h2>${diary.length ? diary.map(([d, r]) => `<div class="item"><p class="meta muted">${esc(d)} · оценка ${esc(r.tr.score)}/5</p><p><b>${esc(r.tr.topic || 'Задание дня')}</b></p>${r.tr.note ? `<p>${esc(r.tr.note)}</p>` : ''}</div>`).join('') : empty('🌱', 'Выполни задание дня и запиши, как получилось: здесь появится твой дневник побед.')}</div>`;
   $('#view').innerHTML = `<h1>Прогресс</h1>
-    <div class="card"><h2>Уровень: ${LEVELS[li][0]}</h2><p class="muted">${next ? `До уровня «${next[0]}» осталось ${next[1] - p} б.` : 'Максимальный уровень достигнут.'}</p>
+    <div class="card"><h2>Уровень: ${LEVELS[li][0]}</h2><p class="muted">${next ? `До уровня «${next[0]}» осталось ${next[1] - p} б.` : 'Максимальный уровень достигнут.'}</p><p class="muted">Заморозка серии в запасе: <b>${S.freezes}</b> — пропуск одного дня не обнулит серию</p>
       <div class="stats"><div class="stat"><b>${p}</b>баллов</div><div class="stat"><b>${st.cur}</b>серия, дней</div><div class="stat"><b>${st.best}</b>лучшая серия</div><div class="stat"><b>${daysCount}</b>дней в программе</div></div></div>
-    <div class="card"><h2>Последние 7 дней</h2><div class="week" role="img" aria-label="Разделов по дням">${week.map(w => `<div title="${w.k}: ${w.n}"><i style="height:${Math.round(w.n / SECTIONS.length * 100)}%"></i></div>`).join('')}</div>
+    <div class="card"><h2>Последние 7 дней</h2><p class="muted">Настроение: <span style="letter-spacing:4px">${moodRow}</span></p><div class="week" role="img" aria-label="Разделов по дням">${week.map(w => `<div title="${w.k}: ${w.n}"><i style="height:${Math.round(w.n / SECTIONS.length * 100)}%"></i></div>`).join('')}</div>
       <div class="row" style="justify-content:space-between">${week.map(w => `<small class="muted">${w.l}</small>`).join('')}</div></div>
     <div class="card"><h2>Аналитика</h2><p>Любимые разделы: ${esc(fav)}</p><p>Средняя сессия: ${avg} мин.</p><p class="muted"><small>Аналитика хранится только на этом устройстве.</small></p></div>
     ${diaryHtml}<div class="card"><h2>Достижения</h2>${achievements().map(a => `<div class="badge ${a.ok ? 'on' : ''}"><span aria-hidden="true">${a.ok ? '🏆' : '🔒'}</span><div><b>${a.t}</b><br><small class="muted">${a.d}</small></div></div>`).join('')}</div>`;
@@ -600,6 +616,7 @@ document.addEventListener('click', async e => {
     case 'taskSave': { const r = dayRec(viewDate), L = lessonNow(); r.tr = { done: true, score: taskScoreSel, note: (($('#taskNote') || {}).value || '').trim().slice(0, 300), task: currentTask(), topic: L ? L.topic : '' };
       r.done.comm = 1; save(); $('#dlg').close(); toast('Записано в дневник побед'); checkAch(); render(); break; }
     case 'taskReset': { const r = dayRec(viewDate); delete r.tr; save(); render(); break; }
+    case 'mood': { const r = dayRec(viewDate); r.mood = r.mood === b.dataset.v ? null : b.dataset.v; save(); render(); break; }
     case 'luckyAgain': lucky(); break;
   }
 });
@@ -727,6 +744,7 @@ function onboarding() {
   addEventListener('pagehide', flush);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); else lastTick = Date.now(); });
   if (!location.hash) history.replaceState(null, '', location.pathname + location.search + '#/today');
+  applyStreakFreeze();
   render();
   fetchDaily();
   if (!S.onboarded) onboarding(); else scheduleReminder();
