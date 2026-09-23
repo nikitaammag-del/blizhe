@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Политика конфиденциальности — Ближе к людям</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0F0F12">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<style>
+:root{
+  --bg:#0F0F12; --bg2:#15151A; --card:#1A1A20; --line:#2A2A33;
+  --text:#ECECF1; --muted:#A3A3B1; --amber:#F5A623; --amber-ink:#1A1204;
+  --font:Inter,-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+}
+:root[data-theme="light"]{ --bg:#F7F7F4; --bg2:#EFEFEA; --card:#FFFFFF; --line:#DEDED6; --text:#17171C; --muted:#585866; --amber:#925600; }
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:400 1.0625rem/1.65 var(--font);padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}
+.wrap{max-width:760px;margin:0 auto;padding:28px 18px 60px}
+header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:1.15rem;text-decoration:none;color:var(--text)}
+.brand i{width:26px;height:26px;border-radius:8px;background:var(--amber);display:inline-block;position:relative;flex:none}
+.brand i::after{content:"";position:absolute;inset:7px;border-radius:50%;background:var(--bg)}
+button{font:inherit;background:var(--card);border:1px solid var(--line);color:var(--text);border-radius:999px;min-height:40px;padding:0 14px;cursor:pointer}
+h1{font-size:1.7rem;margin:18px 0 4px;letter-spacing:-.01em}
+h2{font-size:1.2rem;margin:30px 0 8px}
+p,li{color:var(--text)}
+.muted{color:var(--muted)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px 20px;margin:16px 0}
+a{color:var(--amber)}
+ul{padding-left:1.2em}
+.updated{color:var(--muted);font-size:.92rem;margin-top:-4px}
+code{background:var(--bg2);border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:.92em}
+footer{margin-top:40px;color:var(--muted);font-size:.9rem;text-align:center}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header>
+    <a class="brand" href="./"><i aria-hidden="true"></i>Ближе к людям</a>
+    <button id="themeBtn" aria-label="Переключить тему">🌓</button>
+  </header>
+
+  <h1>Политика конфиденциальности</h1>
+  <p class="updated">Последнее обновление: 23 сентября 2026 года</p>
+
+  <div class="card">
+    <p><b>Коротко, если нет времени читать целиком:</b> приложение «Ближе к людям» — личный некоммерческий проект одного человека. Веб-версия хранит ваш прогресс только в вашем браузере и никуда его не отправляет. Telegram-бот хранит ваш прогресс на сервере (Cloudflare), но виден только по вашему собственному запросу и удаляется командой <code>/wipe</code>. Рекламы, продажи данных и передачи третьим лицам нет.</p>
+  </div>
+
+  <h2>1. Кто предоставляет сервис</h2>
+  <p>«Ближе к людям» — некоммерческий проект, который ведёт один человек как личную инициативу, без регистрации юридического лица или ИП. Сайт: <a href="https://nikitaammag-del.github.io/blizhe/">nikitaammag-del.github.io/blizhe</a>.</p>
+
+  <h2>2. Что и где хранится — веб-приложение (сайт)</h2>
+  <ul>
+    <li>Ваш прогресс, серия дней, заметки, ответы на вопросы вечерней рефлексии, настроение, избранное и настройки хранятся <b>только в вашем браузере</b> (технология localStorage), на вашем устройстве.</li>
+    <li>Эти данные <b>не передаются</b> на какой-либо сервер и не видны разработчику проекта.</li>
+    <li>Если вы очистите данные сайта в браузере или смените устройство, прогресс не сохранится, если вы заранее не воспользовались функцией экспорта в настройках приложения.</li>
+    <li>Сайт использует <b>Cloudflare Web Analytics</b> — счётчик посещений без файлов cookie, без отслеживания конкретного человека между сайтами. Собираются только обезличенные, агрегированные данные: количество посещений, приблизительная страна, тип устройства, адрес открытой страницы. Подробнее: <a href="https://www.cloudflare.com/web-analytics/" target="_blank" rel="noopener noreferrer">cloudflare.com/web-analytics</a>.</li>
+    <li>Ежедневное содержимое (уроки, новости, цитаты и другие материалы) сайт получает из открытого общедоступного файла на GitHub — эта загрузка не содержит и не передаёт никаких ваших личных данных.</li>
+  </ul>
+
+  <h2>3. Что и где хранится — Telegram-бот</h2>
+  <ul>
+    <li>Если вы пользуетесь ботом, для его работы обрабатывается: идентификатор вашего чата в Telegram (chat id), ваш прогресс по программе, тексты заметок и ответов, которые вы сами вводите, отметки настроения.</li>
+    <li>Эти данные хранятся на сервере <b>Cloudflare</b> (хранилище Workers KV), в инфраструктуре, которую использует бот, — не «в вашем телефоне».</li>
+    <li>Доступ к этим данным технически имеет только сам бот (автоматически) и владелец проекта через панель управления Cloudflare — в обычной работе он не просматривает содержимое чужих записей вручную.</li>
+    <li>Данные хранятся до тех пор, пока вы не удалите их сами командой <code>/wipe</code> в боте — это удаляет всю вашу историю без возможности восстановления.</li>
+    <li>Число участников бота ограничено (не более 30 одновременно), это ограничение технического характера, а не связанное с обработкой данных.</li>
+    <li>Бот не передаёт ваши данные в GigaChat или другие внешние системы — нейросеть используется только для подготовки общего, одинакового для всех ежедневного содержимого, без ваших личных данных.</li>
+  </ul>
+
+  <h2>4. Кому передаются данные</h2>
+  <p>Данные не продаются и не передаются рекламодателям. Технически данные проходят через инфраструктуру следующих поставщиков услуг, необходимую для работы сервиса:</p>
+  <ul>
+    <li><b>GitHub Pages</b> — хостинг сайта;</li>
+    <li><b>Cloudflare</b> — хостинг Telegram-бота и хранилище его данных, счётчик посещений сайта;</li>
+    <li><b>Telegram</b> — доставка сообщений бота.</li>
+  </ul>
+  <p class="muted">У каждого из этих поставщиков есть собственная политика конфиденциальности, которая тоже применяется при использовании их инфраструктуры.</p>
+
+  <h2>5. Возрастные ограничения</h2>
+  <p>Материалы приложения (новости, юмор) рассчитаны на аудиторию 16 лет и старше. Сервис не предназначен для детей младше этого возраста.</p>
+
+  <h2>6. Ваши права</h2>
+  <ul>
+    <li><b>Веб-версия:</b> вы полностью контролируете свои данные — они у вас на устройстве. Экспорт и очистка доступны в разделе «Настройки».</li>
+    <li><b>Бот:</b> команда <code>/export</code> присылает файл со всеми вашими данными, команда <code>/wipe</code> удаляет их безвозвратно.</li>
+    <li>Вы можете в любой момент прекратить использование сайта или бота без каких-либо последствий.</li>
+  </ul>
+
+  <h2>7. Характер сервиса</h2>
+  <p>Приложение — образовательный и развлекательный инструмент для самостоятельной практики общения. Оно не является психологической, медицинской или юридической консультацией и не заменяет обращение к специалисту. Часть материалов (уроки, переводы, разбор промптов) создаётся автоматически с использованием нейросети и может содержать неточности.</p>
+
+  <h2>8. Изменения этой политики</h2>
+  <p>Текст может обновляться по мере развития проекта. Дата последнего изменения указана в начале страницы.</p>
+
+  <h2>9. Контакты</h2>
+  <p class="muted">Раздел контактов для обращений по вопросам данных — заполняется владельцем проекта отдельно.</p>
+
+  <div class="card">
+    <p class="muted"><b>Это черновик документа, а не заверенная юридическая консультация.</b> Он подготовлен как основа и добросовестно описывает, как всё устроено технически. Перед публичным использованием на широкую аудиторию рекомендуется показать текст юристу, особенно в части формулировок по 152-ФЗ «О персональных данных».</p>
+  </div>
+
+  <footer>
+    <p><a href="./">← Вернуться в приложение</a></p>
+  </footer>
+</main>
+<script>
+(function(){
+  var b=document.getElementById('themeBtn');
+  var saved=localStorage.getItem('gd:theme');
+  if(saved) document.documentElement.dataset.theme=saved;
+  else if(matchMedia('(prefers-color-scheme: light)').matches) document.documentElement.dataset.theme='light';
+  b.addEventListener('click',function(){
+    var cur=document.documentElement.dataset.theme==='light'?'dark':'light';
+    document.documentElement.dataset.theme=cur; localStorage.setItem('gd:theme',cur);
+  });
+})();
+</script>
+</body>
+</html>

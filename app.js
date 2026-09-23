@@ -525,6 +525,7 @@ function viewSettings() {
     <div class="card"><h2>Данные</h2><p>Резервная копия хранится в файле. Ничего не отправляется на сервер.</p>
       <div class="row"><button class="btn sm" data-act="export">Экспорт данных</button><button class="btn ghost sm" data-act="import">Импорт</button><button class="btn ghost sm" data-act="reset">Стереть всё</button></div></div>
     ${Object.values(CFG.DONATE).some(Boolean) ? `<div class="card"><h2>Поддержать проект</h2><div class="row">${Object.entries(CFG.DONATE).filter(([, v]) => v).map(([k, v]) => `<a class="btn ghost sm" href="${esc(v)}" target="_blank" rel="noopener noreferrer">${esc(k)}</a>`).join('')}</div></div>` : ''}
+    <div class="card"><h2>Конфиденциальность</h2><p>Как устроено хранение ваших данных и что видит бот.</p><a class="btn ghost sm" href="privacy.html">Политика конфиденциальности</a></div>
     <div class="card"><h2>Источники данных</h2><ul class="clean"><li>События: Википедия (ru), REST API «On this day»</li><li>Новости: RSS N+1 и Naked Science через rss2json.com</li><li>Ежедневная подборка (daily.json): ${DAILY && DAILY.date ? esc(DAILY.date) + ', источников без ошибок: ' + Object.values(DAILY.sources || {}).filter(v => v === 'ok').length + ' из ' + Object.keys(DAILY.sources || {}).length : 'ещё не создана'}</li><li>Запасная база в data.js (если подборки нет)</li></ul>
       <p class="muted"><small>Если внешний источник не отвечает 8 секунд, показывается сохранённая копия или архив.</small></p></div>`;
 }
