@@ -252,27 +252,15 @@
  "jokes": [
   {
    "id": "aj1deea8g",
-   "kind": "anekdot",
-   "t": "Сейчас перед объединенной Европой стоит сложная задача - надо как-то выбрать одну из стран НАТО, на которую вероломно нападет Россия.",
-   "src": "anekdot.ru",
-   "url": "https://www.anekdot.ru/release/anekdot/day/2026-09-24/#1633977",
-   "score": 7
+   "h": "j1deea8g"
   },
   {
    "id": "aj1g7igfd",
-   "kind": "anekdot",
-   "t": "Если вещают о повышении пенсий – жди роста тарифов ЖКХ.",
-   "src": "anekdot.ru",
-   "url": "https://www.anekdot.ru/release/anekdot/day/2026-09-18/#1632476",
-   "score": 7
+   "h": "j1g7igfd"
   },
   {
    "id": "aj1bb701m",
-   "kind": "anekdot",
-   "t": "В условиях жесткой международной изоляции России желающих пообщаться с Лавровым на Генассамблее ООН стало существенно больше, чем до изоляции.",
-   "src": "anekdot.ru",
-   "url": "https://www.anekdot.ru/release/anekdot/day/2026-09-24/#1633978",
-   "score": 6
+   "h": "j1bb701m"
   }
  ],
  "stories": []
