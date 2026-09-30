@@ -46,3 +46,4 @@ jobs:
           git diff --cached --quiet || git commit -m "Подборка за $(TZ=Europe/Moscow date +%F)"
           git pull --rebase origin "${GITHUB_REF_NAME}" || true   # если в репозиторий что-то загрузили одновременно
           git push
+
