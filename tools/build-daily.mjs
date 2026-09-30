@@ -13,13 +13,19 @@
    ===================================================================== */
 import fs from 'node:fs/promises';
 import BLOCK from '../blocklist.js';       // тематический фильтр «без военного конфликта» (общий с приложением)
-import { TOPICS } from './curriculum.mjs';   // годовая программа: 360 тем
+import { TOPICS } from './curriculum.mjs';
+import { SLANG } from './slang.mjs';        // молодёжный сленг, новые и редкие слова
+import { RU_DATES } from './ru-dates.mjs';  // календарь России: дни воинской славы, научные и памятные даты   // годовая программа: 360 тем
 import { WORDS } from './words.mjs';         // 490 слов для «Слова дня»
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const TODAY = process.env.BUILD_DATE || new Date().toISOString().slice(0, 10);
+const MSK_MS = 3 * 3600e3;                                                   // Москва = UTC+3, без перехода на летнее время
+const TODAY = process.env.BUILD_DATE || new Date(Date.now() + MSK_MS).toISOString().slice(0, 10); // «сегодня» — по Москве, а не по UTC
+const mskHour = () => (process.env.MSK_HOUR != null ? Number(process.env.MSK_HOUR) : new Date(Date.now() + MSK_MS).getUTCHours());
+const FORCE = !!process.env.FORCE_BUILD;                                     // ручной запуск: пересобрать всё заново
+const NEWS_N = 8;                                                            // новостей в день: 4 «про Россию и науку» + 4 «про мир»
 const DAYNUM = Math.floor(Date.parse(TODAY + 'T00:00:00Z') / 864e5);
 const GIGA = process.env.GIGACHAT_AUTH_KEY || '';      // «Ключ авторизации» из личного кабинета GigaChat (Studio)
 const DAY_OF_YEAR = Math.floor((Date.parse(TODAY + 'T00:00:00Z') - Date.parse(TODAY.slice(0, 4) + '-01-01T00:00:00Z')) / 864e5) + 1;
@@ -171,16 +177,16 @@ const CLICKBAIT = /(^|[^а-яё])шок|сенсаци|не поверите|won
 const newsOk = t => { const x = yo(t); return !BANNED[0].test(x) && !BANNED[1].test(x) && !/суицид|самоубий|педофил/.test(x) && !BLOCK.test(t); };   // новости о военном конфликте не берём ни с какой стороны
 async function buildNews(seen) {
   const all = [];
-  await Promise.all(FEEDS.map(async f => { try { parseRss(await getTextAuto(f.u)).slice(0, f.big ? 30 : 15).forEach(x => all.push({ ...x, title: x.title.split(' // ')[0].trim(), src: f.n, cat: f.cat, w: f.w, lang: f.lang })); report['feed:' + f.n] = 'ok'; } catch (e) { report['feed:' + f.n] = 'fail: ' + e.message; } }));
-  const now = Date.parse(TODAY + 'T12:00:00Z');
+  await Promise.all(FEEDS.map(async f => { try { parseRss(await getTextAuto(f.u)).slice(0, f.big ? 30 : 15).forEach((x, idx) => all.push({ ...x, idx, big: !!f.big, title: x.title.split(' // ')[0].trim(), src: f.n, cat: f.cat, w: f.w, lang: f.lang })); report['feed:' + f.n] = 'ok'; } catch (e) { report['feed:' + f.n] = 'fail: ' + e.message; } }));
+  const now = process.env.BUILD_DATE ? Date.parse(TODAY + 'T12:00:00Z') : Date.now(); // свежесть считаем от реального момента сборки
   const pool = all.map(x => { const t = Date.parse(x.date); return { ...x, hrs: isNaN(t) ? 48 : Math.max(0, (now - t) / 36e5) }; })
-    .filter(x => x.title && x.link && x.hrs <= 72 && newsOk(x.title + ' ' + x.desc) && !seen.has(norm(x.title)));
+    .filter(x => x.title && x.link && x.hrs <= 48 && newsOk(x.title + ' ' + x.desc) && !seen.has(norm(x.title)));
   const tk = pool.map(x => toks(x.title));
   pool.forEach((x, i) => {
     const srcs = new Set(); pool.forEach((y, j) => { if (j !== i && y.src !== x.src) { let c = 0; tk[i].forEach(w => { if (tk[j].has(w)) c++; }); if (c >= 2) srcs.add(y.src); } });
     const txt = x.title + ' ' + x.desc, ru = RUSSIA.test(txt), dis = DISCOVERY.test(txt);
     x.tags = [...(ru ? ['Россия'] : []), ...(dis ? ['открытия и наука'] : [])];
-    x.score = Math.round((x.w + 3 * (1 - Math.min(x.hrs, 72) / 72) + 1.5 * Math.min(srcs.size, 2) + (ru ? 3 : 0) + (dis ? 3 : 0) + (ru && dis ? 1 : 0) - (CLICKBAIT.test(x.title) ? 1.5 : 0)) * 100) / 100;
+    x.score = Math.round((x.w + 3 * (1 - Math.min(x.hrs, 72) / 72) + 2 * Math.min(srcs.size, 3) + (x.big && x.idx < 3 ? 1.5 - 0.5 * x.idx : 0) + (ru ? 3 : 0) + (dis ? 3 : 0) + (ru && dis ? 1 : 0) - (CLICKBAIT.test(x.title) ? 1.5 : 0)) * 100) / 100;
   });
   const sorted = pool.sort((a, b) => b.score - a.score);
   /* Пополам (ваш выбор): 3 новости про Россию и науку (есть тег «Россия» или «открытия и наука») + 3 про мир (без этих тегов).
@@ -190,7 +196,7 @@ async function buildNews(seen) {
     const res = [...start], per = {}, cnt = { A: 0, B: 0 };
     res.forEach(x => { per[x.src] = (per[x.src] || 0) + 1; cnt[grp(x)]++; });
     const tryAdd = (x, strict, cap) => {
-      if (res.length >= 6 || res.includes(x) || (per[x.src] || 0) >= cap || (strict && cnt[grp(x)] >= 3)) return;
+      if (res.length >= NEWS_N || res.includes(x) || (per[x.src] || 0) >= cap || (strict && cnt[grp(x)] >= NEWS_N / 2)) return;
       const t = x._t || toks(x.title); if (res.some(c => { let n = 0; t.forEach(w => { if (c._t.has(w)) n++; }); return n >= 3; })) return; // та же история из другого издания
       x._t = t; per[x.src] = (per[x.src] || 0) + 1; cnt[grp(x)]++; res.push(x);
     };
@@ -272,20 +278,33 @@ export function parseWikt(wt) {
   let et = tidy(sec('Этимология').split('\n').map(l => wikiClean(l)).filter(l => l.length > 10 && !/[{}]/.test(l)).join(' '));
   et = et.replace(/[,;]?\s*(далее\s+)?(из|от|и|или|через|с|от\s+слова)\s*$/i, '').trim(); // оборванное «…, далее из» после вырезанного шаблона
   if (et && !/[.!?…]$/.test(et)) et += '.';
-  return { m: clip(meanings.slice(0, 2).join('; '), 240), e: et.length > 12 ? clip(et, 240) : '' };
+  /* Пример употребления из Викисловаря (строка «#* {{пример|…}}») — если есть и он по-русски */
+  const exLine = sec('Значение').split('\n').find(l => /^#\*/.test(l));
+  let ex = '';
+  if (exLine) { const mm = exLine.match(/\{\{пример\|(?:текст=)?([^|}]+)/); ex = tidy(wikiClean(mm ? mm[1] : exLine.replace(/^#\*\s*/, ''))); if (ex.length < 12 || ex.length > 220 || /[{}]/.test(ex) || cyr(ex) < 0.6) ex = ''; }
+  return { m: clip(meanings.slice(0, 2).join('; '), 240), e: et.length > 12 ? clip(et, 240) : '', ex };
 }
+async function wiktWord(w) {
+  const j = await getJSON(`https://ru.wiktionary.org/w/api.php?action=query&prop=revisions&rvprop=content&rvslots=main&format=json&formatversion=2&titles=${encodeURIComponent(w)}`);
+  const pg = j.query.pages[0]; if (pg.missing) return { why: w + ': нет статьи' };
+  const r = parseWikt(pg.revisions[0].slots.main.content);
+  return r ? { r } : { why: w + ': не найден раздел «Значение»' };
+}
+/* Сначала — молодёжный сленг, новые и редкие слова (slang.mjs); если за 15 попыток не нашлось статьи — классические слова (words.mjs) */
 async function buildWord(seen) {
   const why = []; let tried = 0, allSeen = true;
-  for (let n = 0; n < WORDS.length && tried < 15; n++) {
-    const w = WORDS[(DAY_OF_YEAR * 7 + n) % WORDS.length];           // каждый день начинаем с другого места списка
-    if (seen.has(norm(w))) { why.push(w + ': уже было'); continue; }
-    allSeen = false; tried++;
-    try { const j = await getJSON(`https://ru.wiktionary.org/w/api.php?action=query&prop=revisions&rvprop=content&rvslots=main&format=json&formatversion=2&titles=${encodeURIComponent(w)}`);
-      const pg = j.query.pages[0]; if (pg.missing) { why.push(w + ': нет статьи'); continue; }
-      const r = parseWikt(pg.revisions[0].slots.main.content);
-      if (!r) { why.push(w + ': не найден раздел «Значение»'); continue; }
-      return [{ w: w[0].toUpperCase() + w.slice(1), m: r.m, e: r.e, ex: '', src: 'Викисловарь (CC BY-SA)', url: 'https://ru.wiktionary.org/wiki/' + encodeURIComponent(w) }];
-    } catch (e) { why.push(w + ': ' + e.message); } }
+  const pools = [SLANG.map(([w, tag]) => [w, tag]), WORDS.map(w => [w, ''])];
+  for (const pool of pools) {
+    tried = 0;
+    for (let n = 0; n < pool.length && tried < 15; n++) {
+      const [w, tag] = pool[(DAY_OF_YEAR * 7 + n) % pool.length];      // каждый день начинаем с другого места списка
+      if (seen.has(norm(w))) { why.push(w + ': уже было'); continue; }
+      allSeen = false; tried++;
+      try { const x = await wiktWord(w); if (x.why) { why.push(x.why); continue; }
+        return [{ w: w[0].toUpperCase() + w.slice(1), tag, m: x.r.m, e: x.r.e, ex: x.r.ex || '', src: 'Викисловарь (CC BY-SA)', url: 'https://ru.wiktionary.org/wiki/' + encodeURIComponent(w) }];
+      } catch (e) { why.push(w + ': ' + e.message); }
+    }
+  }
   if (allSeen) throw new Exhausted('весь список слов уже показывали');
   throw new Error('слово не разобрано (' + why.slice(-6).join('; ') + ')'); // причина видна в daily.json → sources.word
 }
@@ -440,6 +459,89 @@ async function buildFilms(seen) {
 }
 
 /* =====================================================================
+   6г. ВЕЛИКИЕ СОБЫТИЯ ДНЯ. Собираем на сервере из нескольких источников и выбираем по «известности»:
+   • календарь России (ru-dates.mjs): дни воинской славы по ФЗ № 32-ФЗ, научные и памятные даты — всегда первыми;
+   • Википедия «В этот день»: избранное + все события + праздники + родились и ушли;
+   • известность = число языковых разделов Википедии у статьи (Викиданные): Гагарин, Менделеев, Куликовская битва
+     есть в десятках и сотнях языков, мелкие сюжеты — в единицах. Так «побег фигуристов» проигрывает изобретению радио.
+   ===================================================================== */
+const YEAR_PAGE = /^\d{3,4}(\s*(год|до\s*н\.?\s*э\.?))?$/i;   // страница-заглушка «1981 год» — это не статья о событии
+const EV_SCIENCE = /открыл|открыти|изобр[её]л|изобретен|теори|доказал|впервые|первый (полёт|полет|спутник|искусственн)|космос|космическ|орбит|спутник|телескоп|вакцин|антибиотик|пенициллин|днк|рентген|электричеств|радио|телефон|телеграф|паровоз|автомобил|самол[её]т|аэроплан|компьютер|интернет|периодическ|нобелевск|атом|ядерн|лазер|транзистор|учёный|ученый|академи|университет|институт|лаборатор/i;
+const EV_HISTORY = /завоеван|восстани|высадил|мятеж|осад|битв|сражени|победа|победил|капитуляц|основан|основал|провозгласил|независимост|коронова|венчан|крещени|принял христианств|объединени|революци|штурм|договор|конституци|манифест|отменил|освобожден|окончани|завершилась/i;
+const EV_MINOR = /запросил.{0,15}убежищ|попросил.{0,15}убежищ|эмигрировал|развел|развёл|женил|вышла замуж|арестован|задержан|уволен|отправлен в отставку|назначен|матч|чемпионат|рекорд|дебют|альбом|сингл|скончал|умер/i;
+const PERSON_DESC = /учён|учен|физик|хим|биолог|математик|астроном|изобретател|врач|медик|инженер|конструктор|космонавт|естествоиспытател|философ|географ|путешественник|лётчик|летчик|педагог|писател|поэт|композитор|художник|архитектор|полководец|адмирал|император|царь|князь|государствен|основател/i;
+
+async function fameOf(qids) {   // число языковых разделов Википедии у статьи — из Викиданных (один-два быстрых запроса)
+  const out = new Map(), ids = [...new Set(qids.filter(q => /^Q\d+$/.test(q || '')))];
+  for (let i = 0; i < ids.length; i += 70) {
+    const q = `SELECT ?q ?n WHERE { VALUES ?q { ${ids.slice(i, i + 70).map(x => 'wd:' + x).join(' ')} } ?q wikibase:sitelinks ?n }`;
+    const j = await getJSON('https://query.wikidata.org/sparql?format=json&query=' + encodeURIComponent(q));
+    ((j.results && j.results.bindings) || []).forEach(b => out.set(b.q.value.split('/').pop(), Number(b.n.value)));
+  }
+  return out;
+}
+async function qidsByTitle(titles) {   // запасной путь, если у страницы нет wikibase_item
+  const out = new Map(), uniq = [...new Set(titles)];
+  for (let i = 0; i < uniq.length; i += 40) {
+    const j = await getJSON('https://ru.wikipedia.org/w/api.php?action=query&prop=pageprops&ppprop=wikibase_item&redirects=1&format=json&formatversion=2&titles=' + encodeURIComponent(uniq.slice(i, i + 40).join('|')));
+    ((j.query && j.query.pages) || []).forEach(pg => { if (pg.pageprops && pg.pageprops.wikibase_item) out.set(String(pg.title).replace(/_/g, ' '), pg.pageprops.wikibase_item); });
+  }
+  return out;
+}
+const commonsImg = p => { const u = p && p.thumbnail && p.thumbnail.source; return /^https:\/\/upload\.wikimedia\.org\/wikipedia\/commons\//.test(u || '') ? u : ''; }; // только свободные файлы Викисклада
+const sameStory = (a, b) => { const A = toks(a), B = toks(b); let n = 0; A.forEach(w => { if (B.has(w)) n++; }); return n >= 3; };
+
+async function buildEvents() {
+  const key = TODAY.slice(5), [mm, dd] = key.split('-'), stat = RU_DATES[key] || [];
+  let wp = {};
+  try { wp = await getJSON(`https://ru.wikipedia.org/api/rest_v1/feed/onthisday/all/${mm}/${dd}`); report['events:википедия'] = 'ok'; }
+  catch (e) { report['events:википедия'] = 'fail: ' + e.message; }
+  const normT = t => String(t || '').replace(/_/g, ' ').trim();
+  const pageOf = e => (e.pages || []).find(pg => pg && pg.title && !YEAR_PAGE.test(normT(pg.title))) || (e.pages || [])[0] || {};
+  const seenKeys = new Set(), cands = [];
+  const push = (e, from) => { if (!e || !e.text || !e.year) return; const k = e.year + '|' + String(e.text).slice(0, 40); if (seenKeys.has(k)) return; seenKeys.add(k); cands.push({ e, from, p: pageOf(e) }); };
+  (wp.selected || []).forEach(e => push(e, 'selected')); (wp.events || []).forEach(e => push(e, 'events'));
+  const people = [...(wp.births || []).map(e => ({ e, kind: 'родился' })), ...(wp.deaths || []).map(e => ({ e, kind: 'умер' }))].filter(x => x.e && x.e.text && x.e.year).map(x => ({ ...x, p: pageOf(x.e) }));
+  const holWp = (wp.holidays || []).filter(h => h && h.text);
+  /* известность */
+  const allPages = [...cands.map(c => c.p), ...people.map(x => x.p)];
+  const byTitle = new Map();
+  const noQ = allPages.filter(pg => pg.title && !pg.wikibase_item).map(pg => normT(pg.title));
+  if (noQ.length) { try { (await qidsByTitle(noQ)).forEach((q, t) => byTitle.set(t, q)); } catch (e) { /* ок: останемся с тем, что есть */ } }
+  const qidOf = pg => pg.wikibase_item || byTitle.get(normT(pg.title)) || '';
+  let fame = new Map(), fameOk = true;
+  try { fame = await fameOf(allPages.map(qidOf)); } catch (e) { fameOk = false; report['events:известность'] = 'нет данных (' + e.message + '): ранжирование по ключевым словам'; }
+  if (fameOk) report['events:известность'] = `Викиданные, статей с оценкой: ${fame.size}`;
+  const fameP = pg => fame.get(qidOf(pg)) || 0;
+  const txtOf = c => c.e.text + ' ' + (c.p.extract || '');
+  const catOf = t => (EV_SCIENCE.test(t) ? 'наука' : EV_HISTORY.test(t) ? 'история' : 'событие');
+  const score = c => { const t = txtOf(c);
+    return 10 * Math.log10(1 + fameP(c.p)) + (c.from === 'selected' ? 4 : 0) + (EV_SCIENCE.test(t) ? 3 : 0) + (EV_HISTORY.test(t) ? 3 : 0) + (RUSSIA.test(t) ? 2 : 0) - (EV_MINOR.test(c.e.text) ? 8 : 0) + Math.min((c.e.pages || []).length, 5) * 0.3; };
+  const ranked = cands.filter(c => !BLOCK.core(txtOf(c))).map(c => ({ c, s: score(c), cat: catOf(txtOf(c)) })).sort((a, b) => b.s - a.s);
+  /* основной список: сначала записи календаря России, дальше — самые известные, не больше двух из одной рубрики */
+  const main = stat.filter(x => x.y).map(x => ({ y: x.y, t: x.t, cat: x.k, glory: !!x.glory, src: 'Календарь России' }));
+  const perCat = {}; main.forEach(x => { perCat[x.cat] = (perCat[x.cat] || 0) + 1; });
+  for (const r of ranked) {
+    if (main.length >= 4) break;
+    if ((perCat[r.cat] || 0) >= 2 || main.some(m => sameStory(m.t, r.c.e.text))) continue;
+    perCat[r.cat] = (perCat[r.cat] || 0) + 1;
+    main.push({ y: r.c.e.year, t: clip(r.c.e.text, 260), ex: clip(oneLine(r.c.p.extract || ''), 240), cat: r.cat, fame: fameP(r.c.p) || undefined,
+      url: httpUrl(r.c.p.content_urls && r.c.p.content_urls.desktop && r.c.p.content_urls.desktop.page), img: BLOCK.test(txtOf(r.c)) ? '' : commonsImg(r.c.p), src: 'Википедия' });
+  }
+  main.sort((a, b) => a.y - b.y);
+  /* праздники: закон/календарь России, затем Википедия (сначала российские) */
+  const holidays = stat.filter(x => !x.y).map(x => ({ t: x.t, kind: 'праздник' }));
+  holWp.filter(h => !BLOCK.core(h.text) && String(h.text).length <= 200).sort((a, b) => (RUSSIA.test(b.text) ? 1 : 0) - (RUSSIA.test(a.text) ? 1 : 0))
+    .forEach(h => { if (holidays.length < 5 && !holidays.some(x => norm(x.t) === norm(h.text))) holidays.push({ t: clip(oneLine(h.text), 200), kind: 'праздник', url: httpUrl((h.pages && h.pages[0] && h.pages[0].content_urls && h.pages[0].content_urls.desktop && h.pages[0].content_urls.desktop.page)) }); });
+  /* знаменитые люди дня: учёные, изобретатели, писатели, правители — по известности */
+  const famous = people.map(x => ({ ...x, f: fameP(x.p), ok: PERSON_DESC.test(String(x.p.description || '') + ' ' + x.e.text) })).filter(x => x.ok && !BLOCK.core(x.e.text))
+    .sort((a, b) => b.f - a.f).slice(0, 3)
+    .map(x => ({ y: x.e.year, t: clip(oneLine(x.e.text), 130), kind: x.kind, url: httpUrl(x.p.content_urls && x.p.content_urls.desktop && x.p.content_urls.desktop.page) }));
+  if (!main.length && !holidays.length) throw new Error('нет событий ни в календаре России, ни в Википедии');
+  return { key, main, holidays, people: famous };
+}
+
+/* =====================================================================
    7. ЮМОР — официальные RSS-ленты «Анекдоты из России» (anekdot.ru).
       Сайт разрешает транслировать ленты на другие сайты при обязательной ссылке на него, поэтому
       каждый анекдот подписан «Источник: anekdot.ru» и ведёт на оригинал. Права на тексты принадлежат
@@ -455,9 +557,10 @@ const HUMOR_ALLOW_POLITICS = false;
 const yo = t => t.toLowerCase().replace(/ё/g, 'е');
 const MAT = [/х[уy][йеяию]/, /п[иi]зд/, /бля[дт]/, /(^|[^а-я])бля([^а-я]|$)/,
   /(^|[^а-я])(на|по|за|вы|у|от|до|при|раз|об|под|про|пере)?еб([аоуиыяеюл]|ну|ан)/, /долбо?еб|долбае/, /мудак|мудил/, /пид[оа]р|пидр/,
-  /гандон|залуп|манд[ао]в|шлюх/, /(^|[^а-я])сук(а|и|е|у|ой|ам|ами)([^а-я]|$)|сучар/, /трахат|трахну|трахал|трахн/, /\*{2,}|[а-я]\*[а-я]|#{2,}/];
+  /гандон|залуп|манд[ао]в|шлюх/, /(^|[^а-я])сук(а|и|е|у|ой|ам|ами)([^а-я]|$)|сучар/, /трахат|трахну|трахал|трахн/, /\*{2,}|[а-я]\*[а-я]|#{2,}/,
+  /бзд|бзи[лт]|пердеж|пердят|дерьм|говн|(^|[^а-я])жоп|дроч|ссан|ссыт|обосс|обссы/];
 const BANNED = [/жид(ы|ов|ам)?([^а-я]|$)|хач|чурк|хохл|кацап|москал|черномаз/, /порно|минет|оргазм|сперм|изнасил|педофил|инцест|зоофил|некрофил/, /суицид|самоубий|теракт|террор|похорон|погибш/];
-const POLITICS = [/путин|трамп|байден|зеленск|навальн|политик|госдум|депутат|санкци|единорос|коммунист|мобилизац|вторжен|спецоперац|избирател|референдум|выбор(ы|ов|ах|ам)([^а-я]|$)/];
+const POLITICS = [/путин|трамп|байден|зеленск|навальн|макрон|мерц|шольц|стармер|эрдоган|орбан|мадьяр|вучич|нетаньяху|цзиньпин|политик|госдум|депутат|санкци|единорос|коммунист|мобилизац|вторжен|спецоперац|избирател|референдум|выбор(ы|ов|ах|ам)([^а-я]|$)|президент|премьер|правительств|министр|чиновник|кремл|белый дом|парламент|конгресс|сенат|оппозиц|митинг|режим|диктатор|демократ|евросоюз|европейск\w* союз|(^|[^а-я])(ес|оон|нато|сша)([^а-я]|$)|генассамбл|коалиц|власт(ь|и|ям|ями|ях)([^а-я]|$)/];
 export const hasMat = t => MAT.some(r => r.test(yo(t)));
 const hasBanned = t => BANNED.some(r => r.test(yo(t))) || BLOCK.test(t) || (!HUMOR_ALLOW_POLITICS && POLITICS.some(r => r.test(yo(t))));
 const sentences = t => (t.match(/[.!?…]+(\s|$)/g) || []).length || 1;
@@ -576,7 +679,10 @@ export function parseBlocks(text, heads) {
   const out = {}; marks.forEach((k, n) => { out[k.h] = t.slice(k.e, n + 1 < marks.length ? marks[n + 1].i : t.length).trim(); });
   return out;
 }
-const bullets = x => String(x || '').split('\n').map(l => l.replace(/^\s*(?:[-•–—*]|\d+[.)])\s*/, '').trim()).filter(Boolean);
+const bullets = x => String(x || '').split('\n').map(l => l.replace(/^\s*(?:[-•–—*]|\d+[.)])\s*/, '').replace(/\s*\*+$/, '').trim()).filter(Boolean);
+/* Разбор урока: если модель написала его одним абзацем — режем по предложениям, а не бракуем весь урок */
+const splitSent = x => oneLine(x).split(/(?<=[.!?…»])\s+(?=[А-ЯЁA-Z«"—-])/).map(y => y.trim()).filter(y => y.length >= 15);
+const fixBreakdown = raw => { let b = bullets(raw); if (b.length < 3) { const alt = splitSent(raw); if (alt.length >= 3) b = alt; } return b.slice(0, 5); };
 const oneLine = x => String(x || '').replace(/\s+/g, ' ').trim();
 const safeText = t => !BANNED.slice(0, 2).some(r => r.test(yo(t))) && !hasMat(t) && !BLOCK.core(t);
 
@@ -639,7 +745,7 @@ const lessonPrompt = t => `Ты — тренер по коммуникации. 
 ВЕЧЕРНИЙ ВОПРОС: <один вопрос для рефлексии вечером>`;
 export function parseLesson(txt) {
   const b = parseBlocks(txt, ['СИТУАЦИЯ', 'ДИАЛОГ', 'РАЗБОР', 'ФРАЗЫ', 'ЗАДАНИЕ', 'ВОПРОСЫ', 'ПРИВЫЧКА', 'ВЕЧЕРНИЙ ВОПРОС']);
-  const sit = oneLine(b['СИТУАЦИЯ']), dialog = bullets(b['ДИАЛОГ']), breakdown = bullets(b['РАЗБОР']).slice(0, 5), task = oneLine(b['ЗАДАНИЕ']);
+  const sit = oneLine(b['СИТУАЦИЯ']), dialog = bullets(b['ДИАЛОГ']), breakdown = fixBreakdown(b['РАЗБОР']), task = oneLine(b['ЗАДАНИЕ']);
   const questions = bullets(b['ВОПРОСЫ']).slice(0, 3), habit = oneLine(b['ПРИВЫЧКА']), evening = oneLine(b['ВЕЧЕРНИЙ ВОПРОС']), phrases = bullets(b['ФРАЗЫ']).map(x => x.replace(/^[«"]|[»"]$/g, '')).filter(x => x.length >= 8 && x.length <= 160).slice(0, 4);
   const all = [sit, ...dialog, ...breakdown, ...phrases, task, ...questions, habit, evening].join(' '); const errs = [];
   /* «Лекция о теме» вместо живой сцены и задание без срока — брак: пусть модель перепишет */
@@ -654,19 +760,40 @@ export function parseLesson(txt) {
   return { ok: errs.length === 0, errs, lesson: { situation: sit, dialog: dialog.slice(0, 12), breakdown, phrases, task, questions, habit, evening, quality: q } };
 }
 async function readArchive(date) { try { return JSON.parse(await fs.readFile(path.join(ROOT, 'archive', date + '.json'), 'utf8')); } catch (e) { return null; } }
+const HARD_ERR = new Set(['ситуация', 'диалог', 'задание', 'язык', 'запрещённые слова', 'диалог-лекция', 'задание без срока']);
+const DEFAULT_HABIT = 'Сегодня один раз осознанно используйте одну из фраз этого урока в реальном разговоре.';
+const DEFAULT_EVENING = 'Что сегодня получилось в общении лучше всего и что бы вы сделали иначе?';
+/* «Мягкая приёмка»: если в уроке не хватает только второстепенного, чиним его, а не выбрасываем весь урок (пустой день хуже чуть менее идеального урока) */
+function softFix(r) {
+  if (r.errs.some(e => HARD_ERR.has(e))) return null;
+  const L = { ...r.lesson };
+  L.breakdown = (L.breakdown || []).filter(x => !(/^слабо:?/i.test(x) && !/→|->|—>|➜/.test(x)));
+  if (L.breakdown.length < 2 || (L.questions || []).length < 2) return null;
+  if (!L.habit || L.habit.length < 10) L.habit = DEFAULT_HABIT;
+  if (!L.evening || L.evening.length < 10) L.evening = DEFAULT_EVENING;
+  L.quality = Math.max(0, (L.quality || 0) - 2); L.soft = true;
+  return L;
+}
 async function buildLesson() {
   const t = TOPICS[COURSE_DAY - 1];
   const prev = await readArchive((Number(TODAY.slice(0, 4)) - 1) + TODAY.slice(4)); // тот же день прошлого года
   if (prev && prev.lesson && prev.lesson.topic === t.topic && prev.lesson.quality >= 8) { report['lesson:повтор'] = 'год прошёл: берём лучший урок прошлого года (оценка ' + prev.lesson.quality + ')'; return { ...prev.lesson, reused: true }; }
   if (!HAS_LLM) throw new Error('для нового урока нужна нейросеть (GigaChat) — используется встроенная база');
-  let best = null; const errs = [];
-  for (let i = 0; i < 2; i++) {
-    const r = parseLesson(await retry(() => llm(lessonPrompt(t), 2500)));
-    if (r.ok) { if (!best || r.lesson.quality > best.quality) best = r.lesson; if (best.quality >= 8) break; } else errs.push(r.errs.join(','));
+  let best = null, softBest = null, feedback = ''; const errs = [];
+  for (let i = 0; i < 3; i++) {                                       // три попытки; после неудачной модели говорим, что именно исправить
+    const r = parseLesson(await retry(() => llm(lessonPrompt(t) + feedback, 2500)));
+    if (r.ok) { if (!best || r.lesson.quality > best.quality) best = r.lesson; if (best.quality >= 8) break; }
+    else {
+      errs.push(r.errs.join(','));
+      const sf = softFix(r); if (sf && (!softBest || sf.quality > softBest.quality)) softBest = sf;
+      feedback = `\n\nВАЖНО. В прошлой попытке были ошибки: ${r.errs.join(', ')}. Исправь их. Строго соблюдай формат: в РАЗБОРЕ 3–4 пункта, каждый с новой строки и с «- » в начале; ФРАЗЫ — 3 пункта; ВОПРОСЫ — 3 пункта; после каждого заголовка ставь двоеточие.`;
+    }
   }
-  if (!best) throw new Error('урок не прошёл проверку (' + errs.join(' | ') + ')');
-  report['lesson:оценка'] = String(best.quality);
-  return { day: COURSE_DAY, of: TOPICS.length, block: t.block, topic: t.topic, ...best, source: LLM_NAME };
+  const chosen = best || softBest;
+  if (!chosen) throw new Error('урок не прошёл проверку (' + errs.join(' | ') + ')');
+  if (!best) report['lesson:мягко'] = 'принят с исправлениями: ' + errs.join(' | ');
+  report['lesson:оценка'] = String(chosen.quality);
+  return { day: COURSE_DAY, of: TOPICS.length, block: t.block, topic: t.topic, ...chosen, source: LLM_NAME };
 }
 
 /* =====================================================================
@@ -689,7 +816,29 @@ async function buildTracks(seen) {
 /* =====================================================================
    СБОРКА
    ===================================================================== */
+async function readDaily() { try { return JSON.parse(await fs.readFile(path.join(ROOT, 'daily.json'), 'utf8')); } catch (e) { return null; } }
 async function main() {
+  /* Запуск идёт по нескольким сигналам расписания (GitHub может опоздать или пропустить один). Поэтому сборщик идемпотентен:
+     • за сегодня (по Москве) ничего нет — собираем всё;
+     • есть, но чего-то не хватает (урок, новости, события) — дособираем только это;
+     • есть всё, но новости старше 90 минут и уже утро (после 06:00) — один раз освежаем новости, чтобы к 8:00 они были самыми свежими;
+     • иначе — ничего не делаем. Ручной запуск (FORCE_BUILD) пересобирает всё. */
+  const prev = await readDaily();
+  const today = prev && prev.v === 2 && prev.date === TODAY ? prev : null;
+  let todo = null;
+  if (today && !FORCE) {
+    const miss = [];
+    if (!today.lesson) miss.push('lesson');
+    if (!Array.isArray(today.news) || today.news.length < 4) miss.push('news');
+    if (!today.events || !(today.events.main || []).length) miss.push('events');
+    const refresh = !miss.length && mskHour() >= 6 && !today.newsFinal && (Date.now() - Date.parse(today.newsAt || today.generated)) > 90 * 60e3;
+    if (!miss.length && !refresh) { console.log(`Подборка за ${TODAY} уже собрана полностью — пропускаю.`); return; }
+    todo = new Set(miss.length ? miss : ['news']);
+    Object.assign(report, today.sources || {});
+    report['сборка'] = 'доработка: ' + [...todo].join(', ') + ' (' + new Date().toISOString().slice(11, 16) + ' UTC)';
+    console.log('Режим доработки:', [...todo].join(', '));
+  } else report['сборка'] = 'полная' + (FORCE ? ' (ручной запуск)' : '');
+  const want = k => !todo || todo.has(k);
   const seen = await loadSeen();
   if (GIGA) { // заранее проверяем сертификат и вход в GigaChat, чтобы причина сбоя была видна в daily.json
     const ca = process.env.NODE_EXTRA_CA_CERTS;
@@ -701,13 +850,22 @@ async function main() {
   else if (KEY) report['llm'] = `Claude (${CLAUDE_MODEL})`;
   /* Если новых материалов в источнике не осталось (прошёл год), повторяем лучшее из прошлых */
   const withReuse = (name, fn, fb = []) => step(name, async () => { try { return await fn(seen); } catch (e) { if (!(e instanceof Exhausted)) throw e; report[name + ':повтор'] = 'новых материалов не осталось — берём лучшее из прошлых'; return await fn(new Set()); } }, fb);
-  const [quotes, news, prompts, words, books, films, tracks, humor, lesson] = await Promise.all([
-    withReuse('quotes', buildQuotes), step('news', () => buildNews(seen), []), withReuse('prompts', buildPrompts), withReuse('word', buildWord), withReuse('books', buildBooks),
-    withReuse('films', buildFilms), withReuse('tracks', buildTracks), step('humor', () => buildHumor(seen), { jokes: [], stories: [] }), step('lesson', () => buildLesson(), null)]);
-  const out = { v: 2, date: TODAY, generated: new Date().toISOString(), sources: report,
-    course: { day: COURSE_DAY, of: TOPICS.length },
-    scoring: 'Цитаты: источник+длина+раздел; новости: вес источника+свежесть+совпадение тем; промпты: роль+длина+ограничения; книги и фильмы: оценка×ln(1+голоса); треки: популярность в чарте. Ничего не повторяется 365 дней.',
-    lesson, quotes, news, prompts, words, books, films, tracks, jokes: humor.jokes, stories: humor.stories };
+  const R = {}, jobs = [];
+  const run = (k, f) => { if (want(k)) jobs.push(f().then(v => { R[k] = v; })); };
+  run('quotes', () => withReuse('quotes', buildQuotes)); run('news', () => step('news', () => buildNews(seen), [])); run('prompts', () => withReuse('prompts', buildPrompts));
+  run('words', () => withReuse('word', buildWord)); run('books', () => withReuse('books', buildBooks)); run('films', () => withReuse('films', buildFilms)); run('tracks', () => withReuse('tracks', buildTracks));
+  run('humor', () => step('humor', () => buildHumor(seen), { jokes: [], stories: [] })); run('lesson', () => step('lesson', () => buildLesson(), null)); run('events', () => step('events', () => buildEvents(), null));
+  await Promise.all(jobs);
+  const base = todo ? today : {}, val = (k, d) => (k in R ? R[k] : (base[k] ?? d));
+  const hm = 'humor' in R ? R.humor : { jokes: base.jokes || [], stories: base.stories || [] };
+  const newsBuilt = 'news' in R, nowIso = new Date().toISOString();
+  const out = { v: 2, date: TODAY, generated: base.generated || nowIso,
+    newsAt: newsBuilt ? nowIso : (base.newsAt || base.generated || nowIso), newsFinal: newsBuilt ? mskHour() >= 6 : !!base.newsFinal,
+    sources: report, course: { day: COURSE_DAY, of: TOPICS.length },
+    scoring: 'Цитаты: источник+длина+раздел; новости: вес источника+свежесть+сколько изданий пишут об этом+совпадение тем; промпты: роль+длина+ограничения; книги и фильмы: оценка×ln(1+голоса); треки: популярность в чарте; события дня: календарь России + известность статьи (число языков Википедии). Ничего не повторяется 365 дней.',
+    lesson: val('lesson', null), events: val('events', null), quotes: val('quotes', []), news: val('news', []), prompts: val('prompts', []), words: val('words', []),
+    books: val('books', []), films: val('films', []), tracks: val('tracks', []), jokes: hm.jokes, stories: hm.stories };
+  const { lesson, quotes, news, prompts, words, books } = out;
   await fs.mkdir(path.join(ROOT, 'archive'), { recursive: true });
   const s = JSON.stringify(out, null, 1);
   const arch = { ...out, jokes: out.jokes.map(j => ({ id: j.id, h: jh(j.t) })), stories: out.stories.map(j => ({ id: j.id, h: jh(j.t) })) }; // тексты анекдотов в архив не пишем
