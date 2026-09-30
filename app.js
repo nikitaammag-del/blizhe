@@ -8,7 +8,7 @@ const D = window.DATA;
 
 /* ---------- Настройки, которые вы заполняете сами ---------- */
 const CFG = {
-  MAX_BOT_URL: '',                                   // ссылка на MAX-бота (когда он будет создан)
+  TG_BOT_URL: 'https://t.me/ВАШ_БОТ_bot',            // ссылка на вашего Telegram-бота — впишите точный @username из BotFather
   DONATE: { yoomoney: '', boosty: '', patreon: '' }, // ссылки на донаты
   AFF: { litres: '', ozon: '' },                     // партнёрские ID (пусто = обычные поисковые ссылки)
   API_TIMEOUT: 8000,                                 // таймаут запросов к API, мс
@@ -286,7 +286,7 @@ const BODY = {
   },
   word() {
     const w = mix('words', D.words, 1)[0]; const it = mk('word', `${w.w} — ${w.m}`, w.src);
-    return `<p class="quote" style="font-size:1.5rem">${esc(w.w)}</p><p><b>Значение:</b> ${esc(w.m)}</p>${w.e ? `<p><b>Происхождение:</b> ${esc(w.e)}</p>` : ''}
+    return `${w.tag ? `<p><span class="tag amber">${esc(w.tag)}</span></p>` : ''}<p class="quote" style="font-size:1.5rem">${esc(w.w)}</p><p><b>Значение:</b> ${esc(w.m)}</p>${w.e ? `<p><b>Происхождение:</b> ${esc(w.e)}</p>` : ''}
       ${w.ex ? `<p><b>Пример:</b> <i>${esc(w.ex)}</i></p>` : ''}<p class="muted"><small>Источник: ${esc(w.src)}${w.url ? ` · <a href="${esc(safeUrl(w.url))}" target="_blank" rel="noopener noreferrer">статья</a>` : ''}. Точные формулировки сверяйте со словарями.</small></p><div class="row">${actions(it)}</div>`;
   },
   reflect() {
@@ -332,7 +332,8 @@ const BODY = {
       <div class="row"><button class="btn" data-act="shareDay">Поделиться днём (PNG)</button>
       <button class="btn ghost" data-act="challenge">Вызов другу</button>
       <button class="btn ghost" data-act="print">Сохранить в PDF</button></div>
-      <p class="muted"><small>Сохранение в PDF: в окне печати выберите «Сохранить как PDF».</small></p>`;
+      <p class="muted"><small>Сохранение в PDF: в окне печати выберите «Сохранить как PDF».</small></p>
+      ${botOk() ? `<div class="banner"><b>Нужна поддержка с целью?</b> ИИ-коуч по мотивации в Telegram-боте предложит стратегию, позитивные утверждения и один шаг на сегодня. <a href="${esc(coachUrl())}" target="_blank" rel="noopener noreferrer">Открыть коуча</a></div>` : ''}`;
   }
 };
 function lessonHtml(L) {
@@ -380,7 +381,7 @@ function viewToday() {
     ${session ? `<div class="seg" role="group" aria-label="Длительность">${Object.keys(STEPS).map(k => `<button data-act="len" data-v="${k}" aria-pressed="${S.len === k}" title="${LENNAME[k]}" aria-label="${LENNAME[k]}: около ${minsOf(STEPS[k])} минут">${minsOf(STEPS[k])} мин</button>`).join('')}</div>` : ''}</div>
     <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" aria-label="Прогресс программы дня"><i id="barfill" style="width:${pct}%"></i></div>
     <p class="muted" id="barText">Около ${minsOf(ids)} мин с заданием · пройдено ${done} из ${ids.length}</p></div>`;
-  if (S.friend) h += `<div class="banner">Тебя позвал друг. Проходи программу каждый день и сравнивайте серии. <small>(Сравнение работает вручную: пока без сервера.)</small></div>`;
+  if (S.friend) h += `<div class="banner">Тебя позвал друг на сайт! Проходи программу каждый день. <small>(Прогресс на сайте — только у тебя в браузере, сравнить его с другом можно только на словах; для настоящего сравнения серий друг может позвать тебя в свой Telegram-бот.)</small></div>`;
   if (viewDate !== dstr()) h += `<div class="banner">Показан день ${esc(viewDate)}. <a href="#/today" data-act="today">Вернуться к сегодняшнему</a></div>`;
   if (session) {
     if (rec.finished) h += finishHtml(rec);
@@ -398,10 +399,30 @@ function updateProgress() {
 }
 
 /* ----- События дня: Wikipedia REST → снимок → архив ----- */
+/* «Великие события дня» из подборки: самые известные события, праздники и памятные даты России, знаменитые люди дня */
+const EV_CAT = { 'наука': 'Наука', 'победа': 'Победа', 'история': 'История', 'событие': 'Событие' };
+function renderDailyEvents(box) {
+  const E = DAILY.events, okT = x => !blkCore((x.t || '') + ' ' + (x.ex || ''));
+  const link = (u, t) => (u ? `<a href="${esc(safeUrl(u))}" target="_blank" rel="noopener noreferrer">${esc(t)}</a>` : esc(t));
+  const main = (E.main || []).filter(okT).map(x => { const it = mk('event', `${x.y}: ${x.t}`, x.src || 'Календарь России');
+    return `<div class="item"><p><span class="tag amber">${esc(x.y)}</span><span class="tag">${esc(EV_CAT[x.cat] || 'Событие')}</span>${x.glory ? '<span class="tag">День воинской славы</span>' : ''} ${esc(x.t)}</p>
+      ${x.img && safeImg(x.img) && !blk(x.t) ? `<figure class="evimg"><img src="${esc(safeImg(x.img))}" alt="Иллюстрация к событию: ${esc(clip(x.t, 80))}" loading="lazy" onerror="this.closest('figure').remove()">${figCredit(x.img)}</figure>` : ''}
+      ${x.ex ? `<p class="muted"><small>${esc(clip(x.ex, 240))}</small></p>` : ''}
+      <div class="row">${actions(it)}${x.url ? `<a class="btn ghost sm" href="${esc(safeUrl(x.url))}" target="_blank" rel="noopener noreferrer">Читать в Википедии</a>` : ''}</div></div>`; }).join('');
+  const hol = (E.holidays || []).filter(okT);
+  const ppl = (E.people || []).filter(okT);
+  box.innerHTML = main
+    + (hol.length ? `<h3>Праздники и памятные даты</h3><ul class="clean">${hol.map(h => `<li>${link(h.url, h.t)}</li>`).join('')}</ul>` : '')
+    + (ppl.length ? `<h3>Родились и ушли в этот день</h3><ul class="clean">${ppl.map(x => `<li><b>${esc(x.y)}</b> · ${esc(x.kind)}: ${link(x.url, x.t)}</li>`).join('')}</ul>` : '')
+    + '<p class="muted"><small>Источники: календарь России (ФЗ № 32-ФЗ «О днях воинской славы и памятных датах России»), Википедия «В этот день». Из событий дня выбираются самые известные: чем на большем числе языков есть статья, тем выше событие.</small></p>';
+}
+const botOk = () => !!CFG.TG_BOT_URL && !/ВАШ_БОТ/.test(CFG.TG_BOT_URL);   // адрес бота вписан (а не образец)
+const coachUrl = () => CFG.TG_BOT_URL + '?start=coach';
 const eventsCache = new Map(); // кэш на время сеанса: незачем заново грузить с сети при переходе «Назад/Дальше» по тем же датам
 const YEAR_PAGE = /^\d{3,4}(\s*(год|до\s*н\.?\s*э\.?))?$/i; // страница-заглушка вида «1981» — описание самого года, а не события
 async function loadEvents(date) {
   const rid = renderId; const box = () => $('#ev-body'); const [, m, d] = date.split('-'); let list = null, mode = 'live';
+  if (dailyOk() && DAILY.events && Array.isArray(DAILY.events.main) && DAILY.events.main.length && DAILY.date === date) { if (rid === renderId && box()) renderDailyEvents(box()); return; } // готовая подборка с сервера — без запросов к Википедии из браузера
   if (eventsCache.has(date)) { list = eventsCache.get(date); mode = 'live'; }
   else try {
     const j = await fetchJSON(`https://ru.wikipedia.org/api/rest_v1/feed/onthisday/events/${m}/${d}`);
@@ -521,7 +542,9 @@ function viewSettings() {
     <div class="card"><h2>Установка на телефон</h2><p>Android/Chrome: меню ⋮ → «Установить приложение». iPhone/Safari: «Поделиться» → «На экран “Домой”».</p>
       <button class="btn sm" data-act="install" ${deferredInstall ? '' : 'hidden'}>Установить приложение</button></div>
     <div class="card"><h2>Друзья и бот</h2><p>Твоя ссылка-вызов (случайный код, без личных данных):</p><pre class="prompt">${esc(link)}</pre>
-      <div class="row"><button class="btn sm" data-act="challenge">Скопировать ссылку</button><button class="btn ghost sm" data-act="maxbot">Подключить MAX-бота</button></div></div>
+      <div class="row"><button class="btn sm" data-act="challenge">Скопировать ссылку</button><a class="btn ghost sm" target="_blank" rel="noopener noreferrer" href="${esc(CFG.TG_BOT_URL)}">Открыть Telegram-бота</a></div>
+      <p class="muted"><small>В боте у каждого своя память на сервере — там, в отличие от сайта, можно будет сравнивать серии с другом.</small></p>
+      ${botOk() ? `<p><a class="btn ghost sm" href="${esc(coachUrl())}" target="_blank" rel="noopener noreferrer">Коуч по мотивации (ИИ) в боте</a></p>` : ''}</div>
     <div class="card"><h2>Данные</h2><p>Резервная копия хранится в файле. Ничего не отправляется на сервер.</p>
       <div class="row"><button class="btn sm" data-act="export">Экспорт данных</button><button class="btn ghost sm" data-act="import">Импорт</button><button class="btn ghost sm" data-act="reset">Стереть всё</button></div></div>
     ${Object.values(CFG.DONATE).some(Boolean) ? `<div class="card"><h2>Поддержать проект</h2><div class="row">${Object.entries(CFG.DONATE).filter(([, v]) => v).map(([k, v]) => `<a class="btn ghost sm" href="${esc(v)}" target="_blank" rel="noopener noreferrer">${esc(k)}</a>`).join('')}</div></div>` : ''}
@@ -598,7 +621,6 @@ document.addEventListener('click', async e => {
     case 'enableNotif': if (await enableNotif()) { toast('Уведомления включены'); viewSettings(); } break;
     case 'testNotif': showNotif('Ближе к людям', 'Твоя программа дня готова'); break;
     case 'install': if (deferredInstall) { deferredInstall.prompt(); deferredInstall = null; b.hidden = true; } break;
-    case 'maxbot': CFG.MAX_BOT_URL ? window.open(CFG.MAX_BOT_URL, '_blank', 'noopener') : toast('Ссылка на бота не задана: укажите MAX_BOT_URL в app.js'); break;
     case 'export': { const blob = new Blob([JSON.stringify(S, null, 2)], { type: 'application/json' }); const u = URL.createObjectURL(blob);
       const l = document.createElement('a'); l.href = u; l.download = `gd-backup-${dstr()}.json`; l.click(); setTimeout(() => URL.revokeObjectURL(u), 2000); break; }
     case 'import': $('#importFile').click(); break;
