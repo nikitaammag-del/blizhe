@@ -257,27 +257,15 @@
  "jokes": [
   {
    "id": "ajmm745j",
-   "kind": "anekdot",
-   "t": "Искусственный интеллект изобрели армяне, ещё 100 лет назад. Отвечал на все вопросы, назывался Армянское радио.",
-   "src": "anekdot.ru",
-   "url": "https://www.anekdot.ru/release/anekdot/day/2026-09-28/#1635064",
-   "score": 8
+   "h": "jmm745j"
   },
   {
    "id": "ajyvla18",
-   "kind": "anekdot",
-   "t": "Если вам нечего бросить под ноги женщины, то хоть бы сами там не путайтесь!",
-   "src": "anekdot.ru",
-   "url": "https://www.anekdot.ru/release/anekdot/day/2026-09-29/#1635368",
-   "score": 6
+   "h": "jyvla18"
   },
   {
    "id": "ajso9jb7",
-   "kind": "anekdot",
-   "t": "Будьте добрее к людям в очках. Они платят деньги за то, чтобы видеть ваши недовольные рожи.",
-   "src": "anekdot.ru",
-   "url": "https://www.anekdot.ru/release/anekdot/day/2026-09-25/#1634248",
-   "score": 6
+   "h": "jso9jb7"
   }
  ],
  "stories": []
