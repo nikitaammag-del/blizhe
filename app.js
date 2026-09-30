@@ -8,7 +8,7 @@ const D = window.DATA;
 
 /* ---------- Настройки, которые вы заполняете сами ---------- */
 const CFG = {
-  TG_BOT_URL: 'https://t.me/ВАШ_БОТ_bot',            // ссылка на вашего Telegram-бота — впишите точный @username из BotFather
+  TG_BOT_URL: 'https://t.me/blizhe_k_lyudyam_bot',    // ссылка на ваш Telegram-бот
   DONATE: { yoomoney: '', boosty: '', patreon: '' }, // ссылки на донаты
   AFF: { litres: '', ozon: '' },                     // партнёрские ID (пусто = обычные поисковые ссылки)
   API_TIMEOUT: 8000,                                 // таймаут запросов к API, мс
