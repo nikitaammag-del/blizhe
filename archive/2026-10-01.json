@@ -271,27 +271,15 @@
  "jokes": [
   {
    "id": "aj1nb0e9h",
-   "kind": "anekdot",
-   "t": "- Почему ты не хочешь надеть то, что мне нравится, что я люблю, дорогая?\n- Я не могу надеть борщ и шашлык с пивом.",
-   "src": "anekdot.ru",
-   "url": "https://www.anekdot.ru/release/anekdot/day/2026-09-30/#1635601",
-   "score": 10
+   "h": "j1nb0e9h"
   },
   {
    "id": "aj59s31k",
-   "kind": "anekdot",
-   "t": "Бывают такие женщины. Мало того, что она доска - так ещё и бревно",
-   "src": "anekdot.ru",
-   "url": "https://www.anekdot.ru/release/anekdot/day/2026-09-30/#1635602",
-   "score": 9
+   "h": "j59s31k"
   },
   {
    "id": "aj194x3q1",
-   "kind": "anekdot",
-   "t": "Я не выгораю! Это моя рабочая температура!",
-   "src": "anekdot.ru",
-   "url": "https://www.anekdot.ru/release/anekdot/day/2026-09-30/#1635603",
-   "score": 8
+   "h": "j194x3q1"
   }
  ],
  "stories": []
