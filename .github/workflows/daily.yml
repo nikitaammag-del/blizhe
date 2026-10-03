@@ -24,6 +24,8 @@ jobs:
       GIGACHAT_AUTH_KEY: ${{ secrets.GIGACHAT_AUTH_KEY }}   # необязательно: шутки и перевод промптов (GigaChat)
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}   # необязательно: запасной вариант вместо GigaChat
       TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}             # необязательно: фильмы с рейтингом
+      TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}             # необязательно: автопост «Фраза дня» в Telegram-канал
+      TG_CHANNEL_ID: ${{ secrets.TG_CHANNEL_ID }}           # адрес канала, например @blizhe_daily
       FORCE_BUILD: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}   # ручной запуск пересобирает всё; по расписанию — только недостающее
     steps:
       - uses: actions/checkout@v4
@@ -38,11 +40,17 @@ jobs:
           echo "NODE_EXTRA_CA_CERTS=$RUNNER_TEMP/russian_ca.crt" >> "$GITHUB_ENV"
       - name: Собрать daily.json
         run: node tools/build-daily.mjs
+      # Утренний пост в канал: один раз в день, только с 06:00 до 13:00 по Москве (ночные запуски пропускаются сами)
+      - name: Пост «Фраза дня» в Telegram-канал
+        if: env.TG_BOT_TOKEN != '' && env.TG_CHANNEL_ID != ''
+        continue-on-error: true
+        run: node tools/channel-post.mjs
       - name: Сохранить в репозиторий
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add daily.json archive/
+          if [ -d channel ]; then git add channel/; fi   # отметка «сегодня в канал уже публиковали»
           git diff --cached --quiet || git commit -m "Подборка за $(TZ=Europe/Moscow date +%F)"
           git pull --rebase origin "${GITHUB_REF_NAME}" || true   # если в репозиторий что-то загрузили одновременно
           git push

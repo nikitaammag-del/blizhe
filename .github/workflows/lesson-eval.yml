@@ -1,0 +1,46 @@
+# Проверка качества уроков на выборке: старый шаблон против нового (коуч-психолог).
+# Запуск только вручную: Actions → «Проверка качества уроков» → Run workflow.
+# Ничего не меняет на сайте и в daily.json. Отчёт — во вкладке запуска: Summary и Artifacts → lesson-eval.
+name: Проверка качества уроков
+on:
+  workflow_dispatch:
+    inputs:
+      n:
+        description: 'Сколько тем проверить (20 ≈ 120–150 тыс. токенов GigaChat, 20–30 минут; 100 ≈ 1 млн)'
+        default: '20'
+      mode:
+        description: 'ab — сравнить старый и новый способ; new — только новый (вдвое дешевле)'
+        type: choice
+        options: [new, ab]
+        default: new
+      max_tokens:
+        description: 'Стоп-кран: остановиться, если потрачено больше токенов'
+        default: '200000'
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    env:
+      GIGACHAT_AUTH_KEY: ${{ secrets.GIGACHAT_AUTH_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      EVAL_N: ${{ inputs.n }}
+      EVAL_MODE: ${{ inputs.mode }}
+      EVAL_MAX_TOKENS: ${{ inputs.max_tokens }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: Сертификат Минцифры (для GigaChat)
+        continue-on-error: true
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/russian_ca.crt" https://gu-st.ru/content/lending/russian_trusted_root_ca_pem.crt
+          echo "NODE_EXTRA_CA_CERTS=$RUNNER_TEMP/russian_ca.crt" >> "$GITHUB_ENV"
+      - name: Проверить уроки
+        run: node tools/lesson-eval.mjs
+      - name: Сохранить отчёт
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lesson-eval
+          path: eval/
+          retention-days: 30
