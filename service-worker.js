@@ -5,7 +5,7 @@
    • Внешние API (Википедия, rss2json): сеть с таймаутом, при сбое — последний кэш.
    • Снимки по датам за 7 дней хранит само приложение (localStorage).
    ===================================================================== */
-const VERSION = 'gd-v8';
+const VERSION = 'gd-v9';
 const SHELL = `${VERSION}-shell`, API = `${VERSION}-api`;
 const FILES = ['./', './index.html', './app.js', './data.js', './blocklist.js', './illustrations.js', './tools/curriculum.mjs', './manifest.json',
   './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'];
@@ -21,6 +21,7 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const req = e.request; if (req.method !== 'GET') return;
   const url = new URL(req.url);
+  if (url.pathname.includes('/preview/')) return; // черновик (предпросмотр) — мимо кэша: он не должен попасть на основной сайт даже офлайн
   if (API_HOSTS.includes(url.hostname)) { e.respondWith(apiStrategy(req)); return; }
   if (url.origin === location.origin && url.pathname.endsWith('/daily.json')) { e.respondWith(dailyStrategy(req)); return; }
   if (url.origin === location.origin) { e.respondWith(shellStrategy(req)); }
