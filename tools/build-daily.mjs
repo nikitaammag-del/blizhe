@@ -22,6 +22,10 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+/* Режим черновика (02.10.2026): выпуск собирается заранее в папку OUT_DIR (preview/) и выходит на сайт только после одобрения владельца.
+   Архив прошлых дней (для «без повторов») по-прежнему читается из корня archive/ — там только опубликованные выпуски */
+const OUTD = process.env.OUT_DIR ? path.resolve(ROOT, process.env.OUT_DIR) : ROOT;
+const DRAFT = !!process.env.DRAFT_MODE;                                      // черновик: новости не «освежаем» — что владелец проверил, то и выйдет
 const MSK_MS = 3 * 3600e3;                                                   // Москва = UTC+3, без перехода на летнее время
 const TODAY = process.env.BUILD_DATE || new Date(Date.now() + MSK_MS).toISOString().slice(0, 10); // «сегодня» — по Москве, а не по UTC
 const mskHour = () => (process.env.MSK_HOUR != null ? Number(process.env.MSK_HOUR) : new Date(Date.now() + MSK_MS).getUTCHours());
@@ -180,7 +184,7 @@ const newsOk = t => { const x = yo(t); return !BANNED[0].test(x) && !BANNED[1].t
 async function buildNews(seen) {
   const all = [];
   await Promise.all(FEEDS.map(async f => { try { parseRss(await getTextAuto(f.u)).slice(0, f.big ? 30 : 15).forEach((x, idx) => all.push({ ...x, idx, big: !!f.big, title: x.title.split(' // ')[0].trim(), src: f.n, cat: f.cat, w: f.w, lang: f.lang })); report['feed:' + f.n] = 'ok'; } catch (e) { report['feed:' + f.n] = 'fail: ' + e.message; } }));
-  const now = process.env.BUILD_DATE ? Date.parse(TODAY + 'T12:00:00Z') : Date.now(); // свежесть считаем от реального момента сборки
+  const now = process.env.BUILD_DATE && !DRAFT ? Date.parse(TODAY + 'T12:00:00Z') : Date.now(); // свежесть считаем от реального момента сборки
   const pool = all.map(x => { const t = Date.parse(x.date); return { ...x, hrs: isNaN(t) ? 48 : Math.max(0, (now - t) / 36e5) }; })
     .filter(x => x.title && x.link && x.hrs <= 48 && newsOk(x.title + ' ' + x.desc + ' ' + x.link) && !seen.has(norm(x.title)));
   const tk = pool.map(x => toks(x.title));
@@ -820,7 +824,7 @@ async function buildTracks(seen) {
 /* =====================================================================
    СБОРКА
    ===================================================================== */
-async function readDaily() { try { return JSON.parse(await fs.readFile(path.join(ROOT, 'daily.json'), 'utf8')); } catch (e) { return null; } }
+async function readDaily() { try { return JSON.parse(await fs.readFile(path.join(OUTD, 'daily.json'), 'utf8')); } catch (e) { return null; } }
 async function main() {
   /* Запуск идёт по нескольким сигналам расписания (GitHub может опоздать или пропустить один). Поэтому сборщик идемпотентен:
      • за сегодня (по Москве) ничего нет — собираем всё;
@@ -835,7 +839,7 @@ async function main() {
     if (!today.lesson) miss.push('lesson');
     if (!Array.isArray(today.news) || today.news.length < 4) miss.push('news');
     if (!today.events || !(today.events.main || []).length) miss.push('events');
-    const refresh = !miss.length && mskHour() >= 6 && !today.newsFinal && (Date.now() - Date.parse(today.newsAt || today.generated)) > 90 * 60e3;
+    const refresh = !DRAFT && !miss.length && mskHour() >= 6 && !today.newsFinal && (Date.now() - Date.parse(today.newsAt || today.generated)) > 90 * 60e3;
     if (!miss.length && !refresh) { console.log(`Подборка за ${TODAY} уже собрана полностью — пропускаю.`); return; }
     todo = new Set(miss.length ? miss : ['news']);
     Object.assign(report, today.sources || {});
@@ -870,10 +874,10 @@ async function main() {
     lesson: val('lesson', null), events: val('events', null), quotes: val('quotes', []), news: val('news', []), prompts: val('prompts', []), words: val('words', []),
     books: val('books', []), films: val('films', []), tracks: val('tracks', []), jokes: hm.jokes, stories: hm.stories };
   const { lesson, quotes, news, prompts, words, books } = out;
-  await fs.mkdir(path.join(ROOT, 'archive'), { recursive: true });
+  await fs.mkdir(path.join(OUTD, 'archive'), { recursive: true });
   const s = JSON.stringify(out, null, 1);
   const arch = { ...out, jokes: out.jokes.map(j => ({ id: j.id, h: jh(j.t) })), stories: out.stories.map(j => ({ id: j.id, h: jh(j.t) })) }; // тексты анекдотов в архив не пишем
-  await fs.writeFile(path.join(ROOT, 'daily.json'), s); await fs.writeFile(path.join(ROOT, 'archive', TODAY + '.json'), JSON.stringify(arch, null, 1));
+  await fs.writeFile(path.join(OUTD, 'daily.json'), s); await fs.writeFile(path.join(OUTD, 'archive', TODAY + '.json'), JSON.stringify(arch, null, 1));
   const okN = Object.values(report).filter(v => String(v).startsWith('ok')).length;
   console.log(`daily.json готов за ${TODAY}: источников ок ${okN}/${Object.keys(report).length}`); Object.entries(report).forEach(([k, v]) => console.log(' ', k, '→', v));
   /* Контроль состояния: предупреждения в Actions, сводная таблица в Summary */
