@@ -6,16 +6,16 @@ on:
   workflow_dispatch:
     inputs:
       n:
-        description: 'Сколько тем проверить (20 ≈ 120–150 тыс. токенов GigaChat, 20–30 минут; 100 ≈ 1 млн)'
-        default: '20'
+        description: 'Сколько тем проверить (100 ≈ 1 млн токенов GigaChat и 1,5–3 часа; для пробы — 10)'
+        default: '100'
       mode:
         description: 'ab — сравнить старый и новый способ; new — только новый (вдвое дешевле)'
         type: choice
-        options: [new, ab]
-        default: new
+        options: [ab, new]
+        default: ab
       max_tokens:
         description: 'Стоп-кран: остановиться, если потрачено больше токенов'
-        default: '200000'
+        default: '1200000'
 jobs:
   eval:
     runs-on: ubuntu-latest

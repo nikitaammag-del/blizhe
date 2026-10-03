@@ -1,0 +1,81 @@
+# Черновик выпуска: собирается заранее и НЕ виден на сайте, пока владелец его не одобрит.
+# По расписанию — на завтра (17:00, запасные 17:40 и 18:30 МСК). Кнопка Run workflow — «Пересобрать черновик»
+# (можно выбрать «сегодня», если нужно заменить сегодняшний выпуск). После сборки владельцу приходит сводка в Telegram.
+name: Черновик выпуска
+on:
+  schedule:
+    - cron: '0 14 * * *'    # 17:00 МСК
+    - cron: '40 14 * * *'   # 17:40 МСК — запасной
+    - cron: '30 15 * * *'   # 18:30 МСК — запасной
+  workflow_dispatch:
+    inputs:
+      day:
+        description: 'На какой день собрать черновик'
+        type: choice
+        options: [завтра, сегодня]
+        default: завтра
+permissions:
+  contents: write
+concurrency:
+  group: blizhe-repo
+  cancel-in-progress: false
+jobs:
+  draft:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GIGACHAT_AUTH_KEY: ${{ secrets.GIGACHAT_AUTH_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+      TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+      TG_OWNER_ID: ${{ secrets.TG_OWNER_ID }}
+      OUT_DIR: preview          # черновик пишется в preview/, а не в выпуск сайта
+      DRAFT_MODE: '1'           # новости не освежаются после проверки
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: Дата черновика
+        id: dt
+        run: |
+          if [ "${{ inputs.day }}" = "сегодня" ]; then D=$(TZ=Europe/Moscow date +%F); else D=$(TZ=Europe/Moscow date -d tomorrow +%F); fi
+          echo "BUILD_DATE=$D" >> "$GITHUB_ENV"
+          echo "Черновик на $D"
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "$(cat preview/approved.txt 2>/dev/null)" = "$D" ]; then
+            echo "skip=1" >> "$GITHUB_OUTPUT"; echo "Черновик на $D уже одобрен — не трогаю"
+          fi
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "FORCE_BUILD=1" >> "$GITHUB_ENV"; rm -f preview/approved.txt   # пересборка отменяет прежнее одобрение
+          fi
+          echo "before=$(sha1sum preview/daily.json 2>/dev/null | cut -c1-40)" >> "$GITHUB_OUTPUT"
+      - name: Сертификат Минцифры (для GigaChat)
+        if: steps.dt.outputs.skip != '1' && env.GIGACHAT_AUTH_KEY != ''
+        continue-on-error: true
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/russian_ca.crt" https://gu-st.ru/content/lending/russian_trusted_root_ca_pem.crt
+          echo "NODE_EXTRA_CA_CERTS=$RUNNER_TEMP/russian_ca.crt" >> "$GITHUB_ENV"
+      - name: Собрать черновик
+        if: steps.dt.outputs.skip != '1'
+        run: node tools/build-daily.mjs
+      - name: Страница предпросмотра
+        if: steps.dt.outputs.skip != '1'
+        run: node tools/make-preview.mjs
+      - name: Сохранить черновик
+        id: save
+        if: steps.dt.outputs.skip != '1'
+        run: |
+          AFTER=$(sha1sum preview/daily.json | cut -c1-40)
+          [ "$AFTER" != "${{ steps.dt.outputs.before }}" ] && echo "changed=1" >> "$GITHUB_OUTPUT"
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add preview/
+          git diff --cached --quiet || git commit -m "Черновик выпуска на $BUILD_DATE"
+          git pull --rebase origin "${GITHUB_REF_NAME}" || true
+          git push
+      # Сводка владельцу — только если черновик действительно новый (запасные запуски без изменений молчат)
+      - name: Сводка владельцу в Telegram
+        if: steps.save.outputs.changed == '1'
+        continue-on-error: true
+        run: |
+          sleep 60   # даём GitHub Pages минуту обновить страницу предпросмотра
+          node tools/release.mjs notify

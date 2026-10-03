@@ -1,0 +1,36 @@
+# Одобрить выпуск: владелец проверил черновик (…/blizhe/preview/) и разрешает публикацию.
+# Черновик на завтра выйдет на сайте после полуночи; черновик на сегодня — сразу.
+name: Одобрить выпуск
+on:
+  workflow_dispatch: {}
+permissions:
+  contents: write
+concurrency:
+  group: blizhe-repo
+  cancel-in-progress: false
+jobs:
+  approve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+      TG_OWNER_ID: ${{ secrets.TG_OWNER_ID }}
+      TG_CHANNEL_ID: ${{ secrets.TG_CHANNEL_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: Одобрить
+        run: node tools/release.mjs approve
+      - name: Пост «Фраза дня» в Telegram-канал (если выпуск вышел сейчас и время 06–13)
+        if: env.TG_BOT_TOKEN != '' && env.TG_CHANNEL_ID != ''
+        continue-on-error: true
+        run: node tools/channel-post.mjs
+      - name: Сохранить
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for p in daily.json archive preview channel; do [ -e "$p" ] && git add "$p"; done
+          git diff --cached --quiet || git commit -m "Одобрен выпуск ($(TZ=Europe/Moscow date '+%F %H:%M'))"
+          git pull --rebase origin "${GITHUB_REF_NAME}" || true
+          git push
