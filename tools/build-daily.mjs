@@ -16,7 +16,8 @@ import BLOCK from '../blocklist.js';       // тематический филь�
 import { TOPICS } from './curriculum.mjs';
 import { SLANG } from './slang.mjs';        // молодёжный сленг, новые и редкие слова
 import { RU_DATES } from './ru-dates.mjs';  // календарь России: дни воинской славы, научные и памятные даты   // годовая программа: 360 тем
-import { WORDS } from './words.mjs';         // 490 слов для «Слова дня»
+import { WORDS } from './words.mjs';
+import { generateLessonV2 } from './lesson.mjs'; // урок дня v2: методика коуча-психолога, автопроверка и рецензент         // 490 слов для «Слова дня»
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -121,8 +122,9 @@ async function buildQuotes(seen) {
   }
   if (!cands.length) throw new Error('нет кандидатов');
   const used = new Set(); const out = [];
-  cands.filter(q => !seen.has(norm(q.t)) && !q.doubtful).sort((a, b) => b.score - a.score || a.t.localeCompare(b.t)).forEach(q => { // цитаты с пометкой редакторов «неверная атрибуция» не берём; без источника — не больше одной за выпуск
+  cands.filter(q => !seen.has(norm(q.t)) && !q.doubtful && !BLOCK.test(q.t)).sort((a, b) => b.score - a.score || a.t.localeCompare(b.t)).forEach(q => { // цитаты с пометкой редакторов «неверная атрибуция» не берём; без источника — не больше одной за выпуск
     if (out.length < 4 && !used.has(q.a) && (q.hasSrc || !out.some(x => !x.hasSrc))) { used.add(q.a); out.push(q); } });
+  out.sort((a, b) => (a.hasSrc ? 0 : 1) - (b.hasSrc ? 0 : 1)); // цитатой дня (первой) ставим цитату с указанным источником, «источник не указан» — только ниже
   if (!out.length && cands.length) throw new Exhausted('все найденные цитаты уже показывали');
   /* Портрет автора: только файлы с Викисклада (свободные лицензии), из статьи русской Википедии о человеке. Нет фото — цитата без картинки */
   await Promise.all(out.map(async q => {
@@ -171,7 +173,7 @@ export function parseRss(xml) {
 }
 const toks = t => new Set(norm(t).split(' ').filter(w => w.length > 4).map(w => w.slice(0, 5)));
 const RUSSIA = /росси|(^|[^а-яё])рф([^а-яё]|$)|москв|кремл|russia|moscow|kremlin/i;
-const DISCOVERY = /научн\w* открыти|открыти\w* (в области|учён|ученых|физик|астроном|биолог|химик|генетик)|(сделал|совершил)\w* открыти|учён|учен(ые|ых|ым|ыми|ого)|физик|химик[аиов]|биолог|астроном|генетик|изобрет|нобелев|прорыв в|искусственн\w* интеллект|нейросет|(^|[^а-яё])ии([^а-яё]|$)|архимед|ньютон|менделеев|радио|телескоп|космическ|квантов|днк|геном|вакцин|breakthrough|discover|invent|scientist|researchers|newton|archimedes|artificial intelligence|\bAI\b/i; // «открыт» отдельно НЕ берём: цепляет «открытая площадка», «открыли памятник»
+const DISCOVERY = /научн\w* открыти|открыти\w* (в области|учён|ученых|физик|астроном|биолог|химик|генетик)|(сделал|совершил)\w* открыти|учён|учен(ые|ых|ым|ыми|ого)|физик|химик[аиов]|биолог|астроном|генетик|изобрет|нобелев|прорыв в|искусственн\w* интеллект|нейросет|(^|[^а-яё])ии([^а-яё]|$)|архимед|ньютон|менделеев|радио|телескоп|космическ|квантов|днк|геном|вакцин|breakthrough|\bdiscover|\binvent(ed|ion|ions|or|ors)?\b|scientist|researchers|newton|archimedes|artificial intelligence|\bAI\b/i; // «открыт» отдельно НЕ берём: цепляет «открытая площадка», «открыли памятник»
 const CLICKBAIT = /(^|[^а-яё])шок|сенсаци|не поверите|won't believe|you won.t believe/i;
 /* Для новостей допускаем политику и ЧП, отсекаем откровенное, оскорбления по национальности и темы самоубийств */
 const newsOk = t => { const x = yo(t); return !BANNED[0].test(x) && !BANNED[1].test(x) && !/суицид|самоубий|педофил/.test(x) && !BLOCK.test(t); };   // новости о военном конфликте не берём ни с какой стороны
@@ -180,7 +182,7 @@ async function buildNews(seen) {
   await Promise.all(FEEDS.map(async f => { try { parseRss(await getTextAuto(f.u)).slice(0, f.big ? 30 : 15).forEach((x, idx) => all.push({ ...x, idx, big: !!f.big, title: x.title.split(' // ')[0].trim(), src: f.n, cat: f.cat, w: f.w, lang: f.lang })); report['feed:' + f.n] = 'ok'; } catch (e) { report['feed:' + f.n] = 'fail: ' + e.message; } }));
   const now = process.env.BUILD_DATE ? Date.parse(TODAY + 'T12:00:00Z') : Date.now(); // свежесть считаем от реального момента сборки
   const pool = all.map(x => { const t = Date.parse(x.date); return { ...x, hrs: isNaN(t) ? 48 : Math.max(0, (now - t) / 36e5) }; })
-    .filter(x => x.title && x.link && x.hrs <= 48 && newsOk(x.title + ' ' + x.desc) && !seen.has(norm(x.title)));
+    .filter(x => x.title && x.link && x.hrs <= 48 && newsOk(x.title + ' ' + x.desc + ' ' + x.link) && !seen.has(norm(x.title)));
   const tk = pool.map(x => toks(x.title));
   pool.forEach((x, i) => {
     const srcs = new Set(); pool.forEach((y, j) => { if (j !== i && y.src !== x.src) { let c = 0; tk[i].forEach(w => { if (tk[j].has(w)) c++; }); if (c >= 2) srcs.add(y.src); } });
@@ -568,7 +570,7 @@ export const jokeOk = (t, maxSent = 6) => t.length >= 40 && t.length <= 500 && s
 const htmlToLines = h => decode((h || '').replace(/<!\[CDATA\[|\]\]>/g, '').replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n').replace(/<[^>]+>/g, '')).split('\n').map(l => l.replace(/[ \t\u00a0]+/g, ' ').trim()).filter(Boolean).join('\n');
 
 async function fetchAnekdot() {
-  const feeds = [['десятка', 'https://www.anekdot.ru/rss/export_j.xml'], ['лучшие', 'https://www.anekdot.ru/rss/export_top.xml']]; const all = [];
+  const feeds = [['десятка', 'https://www.anekdot.ru/rss/export_j.xml'], ['лучшие', 'https://www.anekdot.ru/rss/export_top.xml'], ['истории', 'https://www.anekdot.ru/rss/export_o.xml']]; const all = []; // «истории» — официальная «Ежедневная десятка историй»
   await Promise.all(feeds.map(async ([n, u]) => { try {
     const items = parseRss(await getTextAuto(u));
     items.forEach((x, i) => { const body = htmlToLines(x.html); all.push({ feed: n, idx: i, t: body.length >= 30 ? body : htmlToLines(x.title), url: x.link }); });
@@ -577,22 +579,28 @@ async function fetchAnekdot() {
   return all;
 }
 async function buildHumor(seen) {
-  const uniq = new Map();
-  (await fetchAnekdot()).forEach(x => { const k = norm(x.t); if (!k) return; const cur = uniq.get(k);
+  const uniq = new Map(), all = await fetchAnekdot();
+  all.filter(x => x.feed !== 'истории').forEach(x => { const k = norm(x.t); if (!k) return; const cur = uniq.get(k);
     if (cur) cur.score += 3; else uniq.set(k, { ...x, score: (9 - Math.min(x.idx, 9)) + (x.t.length <= 250 ? 1 : 0) }); });
   const cands = [...uniq.values()];
   const passed = cands.filter(x => jokeOk(x.t) && !seen.has(jh(x.t))).sort((a, b) => b.score - a.score);
   report['humor:anekdot.ru'] = `кандидатов ${cands.length}, прошло фильтр ${passed.length}`;
   const safeUrl = u => (u && /^https?:\/\/(www\.)?anekdot\.ru\//.test(u)) ? u : 'https://www.anekdot.ru/';
   const jokes = passed.slice(0, 3).map(x => ({ id: 'a' + jh(x.t), kind: 'anekdot', t: x.t, src: 'anekdot.ru', url: safeUrl(x.url), score: x.score }));
-  let stories = [];
-  if (jokes.length < 2 && HAS_LLM) {  // запасной вариант: нейросеть, только если ленты не ответили
+  /* Смешная история дня: каждый день новая из «Ежедневной десятки историй» anekdot.ru, без повторов (отпечатки в архиве ~400 дней).
+     Раньше историй в подборке не было, и приложение показывало одну из двух встроенных — они и повторялись */
+  const storyOk = t => t.length >= 150 && t.length <= 1300 && sentences(t) <= 16 && t.split('\n').length <= 16 && !hasMat(t) && !hasBanned(t);
+  const storyCands = all.filter(x => x.feed === 'истории');
+  const storyPassed = storyCands.filter(x => storyOk(x.t) && !seen.has(jh(x.t))).sort((a, b) => a.idx - b.idx || a.t.length - b.t.length);
+  let stories = storyPassed.slice(0, 1).map(x => ({ id: 'o' + jh(x.t), kind: 'anekdot', t: x.t, src: 'anekdot.ru', url: safeUrl(x.url) }));
+  report['humor:истории'] = `кандидатов ${storyCands.length}, прошло фильтр ${storyPassed.length}` + (stories.length ? '' : ' — нет подходящей');
+  if ((jokes.length < 2 || !stories.length) && HAS_LLM) {  // запасной вариант: нейросеть, только если ленты не ответили
     try {
       const arr = JSON.parse(extractJSON(await llm(`Ты — редактор юмористической рубрики. Придумай 6 коротких шуток и 1 смешную историю на русском, без мата и без политики. Шутка ≤ 6 предложений, история ≤ 12. Не пересказывай известные анекдоты. Если сомневаешься — не включай. Верни ТОЛЬКО JSON: [{"type":"joke"|"story","text":"..."}]`, 2500)));
       const ok = (Array.isArray(arr) ? arr : []).filter(x => x && typeof x.text === 'string' && !seen.has(jh(x.text)));
       const mkj = x => ({ id: 'h' + jh(x.text), kind: 'ai', t: x.text.trim() });
       ok.filter(x => x.type !== 'story' && jokeOk(x.text)).slice(0, 3 - jokes.length).forEach(x => jokes.push(mkj(x)));
-      stories = ok.filter(x => x.type === 'story' && jokeOk(x.text, 12)).slice(0, 1).map(mkj);
+      if (!stories.length) stories = ok.filter(x => x.type === 'story' && jokeOk(x.text, 12)).slice(0, 1).map(mkj); // история от нейросети — только если лента историй ничего не дала
       report['humor:' + LLM_NAME] = 'запасной вариант: ' + jokes.filter(j => j.kind === 'ai').length + ' шуток';
     } catch (e) { report['humor:' + LLM_NAME] = 'fail: ' + e.message; }
   }
@@ -604,7 +612,7 @@ async function buildHumor(seen) {
 let gigaTok = null, gigaDown = false;
 const netErr = (what, e) => new Error(`${what}: ${e.message}${e.cause ? ' [' + (e.cause.code || e.cause.message) + ']' : ''}`); // показываем и причину сбоя (сертификат, обрыв, таймаут)
 const fetchG = async (what, url, opts) => { try { return await fetch(url, opts); } catch (e) { throw netErr(what, e); } };
-const retry = async (fn, n = 3) => { let last; for (let i = 0; i < n; i++) { try { return await fn(); } catch (e) { last = e; if (gigaDown && !KEY) break; await new Promise(r => setTimeout(r, 2000 * (i + 1))); } } throw last; };
+export const retry = async (fn, n = 3) => { let last; for (let i = 0; i < n; i++) { try { return await fn(); } catch (e) { last = e; if (gigaDown && !KEY) break; await new Promise(r => setTimeout(r, 2000 * (i + 1))); } } throw last; };
 async function gigaToken() {
   if (gigaTok && gigaTok.exp > Date.now() + 60000) return gigaTok.t;
   const r = await fetchG('GigaChat OAuth', 'https://ngw.devices.sberbank.ru:9443/api/v2/oauth', { method: 'POST', signal: AbortSignal.timeout(20000),
@@ -613,25 +621,28 @@ async function gigaToken() {
   const j = await r.json().catch(() => ({})); if (!r.ok || !j.access_token) throw new Error('GigaChat OAuth: ' + (j.message || r.status));
   gigaTok = { t: j.access_token, exp: j.expires_at || Date.now() + 25 * 60000 }; return gigaTok.t;
 }
-async function gigachat(prompt, max = 2000) {
+export const LLM_USAGE = { calls: 0, tokens: 0 }; // сколько запросов и токенов потрачено за запуск (для отчёта и проверки качества)
+async function gigachat(prompt, max = 2000, temperature = 0.8) {
   const r = await fetchG('GigaChat запрос', 'https://gigachat.devices.sberbank.ru/api/v1/chat/completions', { method: 'POST', signal: AbortSignal.timeout(90000),
     headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: 'Bearer ' + await gigaToken() },
-    body: JSON.stringify({ model: process.env.GIGACHAT_MODEL || 'GigaChat', messages: [{ role: 'user', content: prompt }], temperature: 0.8, max_tokens: max }) });
+    body: JSON.stringify({ model: process.env.GIGACHAT_MODEL || 'GigaChat', messages: [{ role: 'user', content: prompt }], temperature, max_tokens: max }) });
   const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error('GigaChat: ' + (j.message || r.status));
+  LLM_USAGE.calls++; LLM_USAGE.tokens += (j.usage && j.usage.total_tokens) || 0;
   return (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '';
 }
 const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-opus-5'; // можно заменить на более дешёвую 'claude-sonnet-5' переменной CLAUDE_MODEL
-async function claude(prompt, max = 2000) {
+async function claude(prompt, max = 2000, temperature) {
   const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', signal: AbortSignal.timeout(90000),
     headers: { 'content-type': 'application/json', 'x-api-key': KEY, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: max, messages: [{ role: 'user', content: prompt }] }) });
+    body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: max, ...(temperature != null ? { temperature } : {}), messages: [{ role: 'user', content: prompt }] }) });
   const j = await r.json(); if (!r.ok) throw new Error('Claude API: ' + (j.error && j.error.message || r.status));
+  LLM_USAGE.calls++; LLM_USAGE.tokens += ((j.usage && (j.usage.input_tokens + j.usage.output_tokens)) || 0);
   return (j.content || []).map(b => b.text || '').join('');
 }
 /* GigaChat — основной; если вход не удался, а ключ Claude есть — автоматически переключаемся на Claude Opus */
-const llmRaw = (prompt, max) => (GIGA && !gigaDown) ? gigachat(prompt, max) : KEY ? claude(prompt, max) : Promise.reject(new Error(GIGA ? 'GigaChat недоступен (см. giga:oauth), запасного ключа Claude нет' : 'нет ключа нейросети'));
+const llmRaw = (prompt, max, temp) => (GIGA && !gigaDown) ? gigachat(prompt, max, temp) : KEY ? claude(prompt, max, temp) : Promise.reject(new Error(GIGA ? 'GigaChat недоступен (см. giga:oauth), запасного ключа Claude нет' : 'нет ключа нейросети'));
 let llmChain = Promise.resolve(); // запросы идут по очереди: у личного тарифа мало параллельных запросов
-const llm = (prompt, max) => { const r = llmChain.then(() => llmRaw(prompt, max)); llmChain = r.catch(() => {}); return r; };
+export const llm = (prompt, max, temp) => { const r = llmChain.then(() => llmRaw(prompt, max, temp)); llmChain = r.catch(() => {}); return r; };
 
 /* ---------- Перевод на русский: всё, что показывается в приложении, должно быть по-русски ---------- */
 export const cyr = t => { const l = (t.match(/[a-zа-яё]/gi) || []).length; return l ? (t.match(/[а-яё]/gi) || []).length / l : 1; }; // доля кириллицы среди букв
@@ -684,7 +695,7 @@ const bullets = x => String(x || '').split('\n').map(l => l.replace(/^\s*(?:[-�
 const splitSent = x => oneLine(x).split(/(?<=[.!?…»])\s+(?=[А-ЯЁA-Z«"—-])/).map(y => y.trim()).filter(y => y.length >= 15);
 const fixBreakdown = raw => { let b = bullets(raw); if (b.length < 3) { const alt = splitSent(raw); if (alt.length >= 3) b = alt; } return b.slice(0, 5); };
 const oneLine = x => String(x || '').replace(/\s+/g, ' ').trim();
-const safeText = t => !BANNED.slice(0, 2).some(r => r.test(yo(t))) && !hasMat(t) && !BLOCK.core(t);
+export const safeText = t => !BANNED.slice(0, 2).some(r => r.test(yo(t))) && !hasMat(t) && !BLOCK.core(t);
 
 /* Разбор промпта: какие приёмы в нём использованы, что улучшить, типичная ошибка, задание — по самому промпту, поэтому каждый день новое */
 async function analyzePrompt(it) {
@@ -714,7 +725,8 @@ ${it.text}`, 1500));
       Проверяем структуру, язык, отсутствие мата; ставим оценку quality (0–10). Через год повторяем только
       уроки с оценкой ≥ 8 (лучшие), остальные пишутся заново.
    ===================================================================== */
-const lessonPrompt = t => `Ты — тренер по коммуникации. Составь мини-урок для аудитории 16+ на тему: «${t.topic}» (раздел курса: «${t.block}»).
+export const lessonPrompt = t =>   // версия 1 (до 02.10.2026) — оставлена для сравнения в tools/lesson-eval.mjs
+ `Ты — тренер по коммуникации. Составь мини-урок для аудитории 16+ на тему: «${t.topic}» (раздел курса: «${t.block}»).
 Правила:
 - Диалог — это ЖИВАЯ СЦЕНА между двумя людьми внутри описанной ситуации (дай героям имена, например Анна и Максим). Нельзя писать разговор О теме урока или об обучении: не начинай со слов «сегодня поговорим», «давайте разберём», «как думаете, стоит ли». Герои просто общаются, а нужный приём виден в их репликах.
 - Реплики короткие, как в жизни. 6–10 реплик по очереди.
@@ -777,23 +789,15 @@ function softFix(r) {
 async function buildLesson() {
   const t = TOPICS[COURSE_DAY - 1];
   const prev = await readArchive((Number(TODAY.slice(0, 4)) - 1) + TODAY.slice(4)); // тот же день прошлого года
-  if (prev && prev.lesson && prev.lesson.topic === t.topic && prev.lesson.quality >= 8) { report['lesson:повтор'] = 'год прошёл: берём лучший урок прошлого года (оценка ' + prev.lesson.quality + ')'; return { ...prev.lesson, reused: true }; }
+  // через год повторяем только урок, который прошёл строгую проверку v2 (автопроверка + рецензент-психолог) с оценкой ≥ 8
+  if (prev && prev.lesson && prev.lesson.topic === t.topic && prev.lesson.quality >= 8 && prev.lesson.qa && prev.lesson.qa.v === 2 && prev.lesson.qa.pass) { report['lesson:повтор'] = 'год прошёл: берём лучший урок прошлого года (оценка ' + prev.lesson.quality + ')'; return { ...prev.lesson, reused: true }; }
   if (!HAS_LLM) throw new Error('для нового урока нужна нейросеть (GigaChat) — используется встроенная база');
-  let best = null, softBest = null, feedback = ''; const errs = [];
-  for (let i = 0; i < 3; i++) {                                       // три попытки; после неудачной модели говорим, что именно исправить
-    const r = parseLesson(await retry(() => llm(lessonPrompt(t) + feedback, 2500)));
-    if (r.ok) { if (!best || r.lesson.quality > best.quality) best = r.lesson; if (best.quality >= 8) break; }
-    else {
-      errs.push(r.errs.join(','));
-      const sf = softFix(r); if (sf && (!softBest || sf.quality > softBest.quality)) softBest = sf;
-      feedback = `\n\nВАЖНО. В прошлой попытке были ошибки: ${r.errs.join(', ')}. Исправь их. Строго соблюдай формат: в РАЗБОРЕ 3–4 пункта, каждый с новой строки и с «- » в начале; ФРАЗЫ — 3 пункта; ВОПРОСЫ — 3 пункта; после каждого заголовка ставь двоеточие.`;
-    }
-  }
-  const chosen = best || softBest;
-  if (!chosen) throw new Error('урок не прошёл проверку (' + errs.join(' | ') + ')');
-  if (!best) report['lesson:мягко'] = 'принят с исправлениями: ' + errs.join(' | ');
-  report['lesson:оценка'] = String(chosen.quality);
-  return { day: COURSE_DAY, of: TOPICS.length, block: t.block, topic: t.topic, ...chosen, source: LLM_NAME };
+  const { lesson, log } = await generateLessonV2(t, COURSE_DAY, { llm: (p, m, temp) => retry(() => llm(p, m, temp)), safe: safeText });
+  const j = lesson.qa.judge;
+  report['lesson:оценка'] = `${lesson.quality}/10 · автопроверка ${lesson.qa.format}` + (j ? ` · психолог ${j.avg} (логика ${j.ЛОГИКА}, безопасность ${j.БЕЗОПАСНОСТЬ})` : ' · рецензент не ответил') + ` · попыток ${log.length}`;
+  if (lesson.weak) report['lesson:слабый'] = 'строгую планку не прошёл, принят по минимальной (в канал не публикуется)' + (j && j.note ? ': ' + j.note : '');
+  const rejected = log.filter(l => l.error || l.hard.length); if (rejected.length) report['lesson:отклонено'] = rejected.map(l => l.error || l.hard.join(', ')).join(' | ').slice(0, 300);
+  return { day: COURSE_DAY, of: TOPICS.length, block: t.block, topic: t.topic, ...lesson, source: LLM_NAME };
 }
 
 /* =====================================================================
