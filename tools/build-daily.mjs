@@ -265,7 +265,9 @@ async function buildPrompts(seen) {
   }
   report['prompts:translate'] = item ? 'переведён' : 'не удалось' + (errs[0] ? ' (' + errs[0] + ')' : '');
   if (!item) throw new Error('английский промпт не показываем: перевод не удался — блок скрыт, остаётся русская библиотека');
-  try { item.analysis = await analyzePrompt(item); report['prompts:analysis'] = 'ok'; } catch (e) { report['prompts:analysis'] = 'fail: ' + e.message; } // разбор приёмов именно этого промпта
+  try { item.analysis = await analyzePrompt(item); report['prompts:analysis'] = 'ok'; } catch (e) { report['prompts:analysis'] = 'fail: ' + e.message; }
+  try { item.aiNews = await fetchAiNews(); report['prompts:ai-news'] = 'ok'; } catch (e) { report['prompts:ai-news'] = 'fail: ' + e.message; }
+  try { item.termOfDay = await makeTermOfDay(item); report['prompts:term'] = 'ok'; } catch (e) { report['prompts:term'] = 'fail: ' + e.message; }
   return [item];
 }
 
@@ -702,6 +704,69 @@ const oneLine = x => String(x || '').replace(/\s+/g, ' ').trim();
 export const safeText = t => !BANNED.slice(0, 2).some(r => r.test(yo(t))) && !hasMat(t) && !BLOCK.core(t);
 
 /* Разбор промпта: какие приёмы в нём использованы, что улучшить, типичная ошибка, задание — по самому промпту, поэтому каждый день новое */
+/* ─── AI-новость дня: что происходит в мире нейросетей и промпт-инжиниринга ──────────────────
+   Источники: MIT Tech Review AI, Wired AI, The Verge AI, Habr (ИИ). Берётся одна новость в день,
+   не повторяется (отпечаток в архиве), переводится GigaChat простым языком.  */
+const AI_FEEDS = [
+  ['MIT Tech Review', 'https://www.technologyreview.com/feed/'],
+  ['Wired AI',        'https://www.wired.com/feed/tag/artificial-intelligence/latest/rss'],
+  ['The Verge AI',    'https://www.theverge.com/rss/ai-artificial-intelligence/index.xml'],
+  ['Habr ИИ',        'https://habr.com/ru/rss/hub/artificial_intelligence/all/']
+];
+const AI_GOOD = /\b(prompt|llm|gpt|claude|gemini|openai|anthropic|mistral|llama|искусственн|нейросет|языков.{0,10}модел|промпт|генератив|ии\b|ai\b|ChatGPT|Midjourney|diffusion|transformer|fine.?tun|embeddin|RAG|agent|мультимодал)/i;
+
+async function fetchAiNews() {
+  const candidates = [];
+  for (const [src, url] of AI_FEEDS) {
+    try {
+      const xml = await getText(url, 7000);
+      const items = parseRss(xml).slice(0, 8);
+      for (const it of items) {
+        const t = (it.title + ' ' + it.description).slice(0, 600);
+        if (!AI_GOOD.test(t) || hasBanned(t) || hasMat(t)) continue;
+        const fp = jh(it.title);
+        if (seen.has(fp)) continue;
+        candidates.push({ fp, title: it.title, desc: it.description, url: it.url, src });
+      }
+    } catch (e) { /* источник недоступен */ }
+  }
+  if (!candidates.length) return null;
+  const pick = candidates[0];
+  // Переводим и упрощаем: GigaChat объясняет новость как «учитель, не как журналист»
+  const raw = await retry(() => llm(
+    `Ты — опытный преподаватель промпт-инжиниринга с 20-летним стажем. Объясни эту новость из мира ИИ простым языком, как объяснял бы ученику без технического бэкграунда. Никакого жаргона без расшифровки. Структура ответа строго:
+ЗАГОЛОВОК: <короткий заголовок на русском, до 12 слов>
+СУТЬ: <2–3 предложения: что произошло, простыми словами>
+ПОЧЕМУ ВАЖНО: <1–2 предложения: что это значит для обычного пользователя>
+НОВОСТЬ: ${pick.title}
+${pick.desc ? 'ДЕТАЛИ: ' + pick.desc.slice(0, 600) : ''}`, 800));
+  const b = parseBlocks(raw, ['ЗАГОЛОВОК', 'СУТЬ', 'ПОЧЕМУ ВАЖНО']);
+  const title = oneLine(b['ЗАГОЛОВОК']), body = oneLine(b['СУТЬ']), why = oneLine(b['ПОЧЕМУ ВАЖНО']);
+  if (!title || body.length < 30) return null;
+  seen.add(pick.fp);
+  return { title, body, why, src: pick.src, url: safeUrl(pick.url) };
+}
+
+/* ─── Термин дня: ключевое понятие промпт-инжиниринга из сегодняшнего промпта ───────────────────
+   GigaChat выбирает один термин из промпта (или базовый для темы) и объясняет его тремя способами:
+   определение → аналогия из жизни → пример в одну строку.  */
+async function makeTermOfDay(prompt) {
+  const raw = await retry(() => llm(
+    `Ты — лучший в мире преподаватель промпт-инжиниринга. Изучи этот промпт и выбери из него ОДИН ключевой термин или приём промпт-инжиниринга, который стоит объяснить новичку (например: «системный промпт», «ролевой промпт», «few-shot», «chain-of-thought», «температура», «контекстное окно» и т.д.).
+Объясни его тремя способами — как учитель с 20-летним стажем объясняет сложное просто:
+ТЕРМИН: <название термина>
+ПРОСТО: <определение в 1 предложении — без жаргона, как для 10-летнего ребёнка>
+АНАЛОГИЯ: <аналогия из обычной жизни — не из мира технологий>
+ПРИМЕР: <одна строка: конкретный пример промпта или ситуации, где это работает>
+СОВЕТ: <практический совет: как использовать это прямо сейчас>
+
+ПРОМПТ: ${(prompt.title + '\n' + prompt.text).slice(0, 1200)}`, 700));
+  const b = parseBlocks(raw, ['ТЕРМИН', 'ПРОСТО', 'АНАЛОГИЯ', 'ПРИМЕР', 'СОВЕТ']);
+  const term = oneLine(b['ТЕРМИН']), simple = oneLine(b['ПРОСТО']), analogy = oneLine(b['АНАЛОГИЯ']), ex = oneLine(b['ПРИМЕР']), tip = oneLine(b['СОВЕТ']);
+  if (!term || simple.length < 20) return null;
+  return { term, simple, analogy, ex, tip };
+}
+
 async function analyzePrompt(it) {
   const out = await retry(() => llm(`Ты — преподаватель по работе с нейросетями. Ниже промпт на русском языке. Разбери его для новичка.
 Ответь СТРОГО в таком формате, без вступлений и пояснений:
