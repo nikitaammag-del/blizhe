@@ -88,7 +88,7 @@ const MOODS = [{ v: 'easy', e: '😊', t: 'Легко' }, { v: 'ok', e: '🙂', 
 const blk = t => typeof BLOCK !== 'undefined' && BLOCK.test(t), blkCore = t => typeof BLOCK !== 'undefined' && BLOCK.core(t);
 const cleanDaily = j => {
   if (!j || typeof j !== 'object') return j;
-  if (Array.isArray(j.news)) j.news = j.news.filter(x => !blk((x.t || '') + ' ' + (x.s || '')));
+  if (Array.isArray(j.news)) j.news = j.news.filter(x => !blk((x.t || '') + ' ' + (x.s || '') + ' ' + (x.l || '')));
   ['jokes', 'stories', 'quotes'].forEach(k => { if (Array.isArray(j[k])) j[k] = j[k].filter(x => !blk(x.t || '')); });
   return j;
 };
@@ -247,7 +247,7 @@ const BODY = {
     const st = mix('stories', D.stories.filter(j => passes(j.t)), 1)[0];
     const lab = k => kindLab(k);
     let h = js.map(j => { const it = mk('joke', j.t, lab(j.kind)); return `<div class="item"><p style="white-space:pre-line">${esc(j.t)}</p><div class="row"><span class="tag ${j.kind === 'orig' ? 'amber' : ''}">${lab(j.kind)}</span>${j.url ? `<a class="btn ghost sm" href="${esc(safeUrl(j.url))}" target="_blank" rel="noopener noreferrer">Источник: anekdot.ru</a>` : ''}${actions(it)}</div></div>`; }).join('');
-    if (st) { const it = mk('joke', st.t, 'Смешная история дня'); h += `<div class="item"><h3>Смешная история дня</h3><p style="white-space:pre-line">${esc(st.t)}</p><div class="row"><span class="tag amber">${lab(st.kind)}</span>${actions(it)}</div></div>`; }
+    if (st) { const it = mk('joke', st.t, 'Смешная история дня'); h += `<div class="item"><h3>Смешная история дня</h3><p style="white-space:pre-line">${esc(st.t)}</p><div class="row"><span class="tag ${st.kind === 'orig' ? 'amber' : ''}">${lab(st.kind)}</span>${st.url ? `<a class="btn ghost sm" href="${esc(safeUrl(st.url))}" target="_blank" rel="noopener noreferrer" aria-label="Источник истории: anekdot.ru">Источник: anekdot.ru</a>` : ''}${actions(it)}</div></div>`; }
     return h + '<p class="muted"><small>Анекдоты берутся из официальных лент «Анекдоты из России» (anekdot.ru), права на тексты принадлежат их владельцам. Фильтр убирает мат, оскорбления и политику; вкусы у людей разные.</small></p>';
   },
   news() { return `<div id="news-body">${skel()}</div>`; },
@@ -463,7 +463,7 @@ async function loadNews(date) {
     return;
   }
   const res = await Promise.allSettled(FEEDS.map(f => fetchJSON('https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent(f.u))));
-  res.forEach((r, i) => { if (r.status === 'fulfilled' && r.value.items) r.value.items.slice(0, FEEDS[i].take + 2).filter(x => passes(x.title || '') && !blk((x.title || '') + ' ' + (x.description || ''))).slice(0, FEEDS[i].take).forEach(x =>
+  res.forEach((r, i) => { if (r.status === 'fulfilled' && r.value.items) r.value.items.slice(0, FEEDS[i].take + 2).filter(x => passes(x.title || '') && !blk((x.title || '') + ' ' + (x.description || '') + ' ' + (x.link || ''))).slice(0, FEEDS[i].take).forEach(x =>
     items.push({ src: FEEDS[i].n, t: stripHtml(x.title), s: clip(stripHtml(x.description || x.content), 260), l: x.link, d: x.pubDate })); });
   if (items.length) snapSet(date, 'news', items);
   else { items = snapGet(date, 'news') || []; mode = items.length ? 'snap' : 'none'; }
