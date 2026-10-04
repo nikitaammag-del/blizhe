@@ -151,20 +151,55 @@ async function buildQuotes(seen) {
       Политика допускается (ваше решение). Отсекаем только откровенное, оскорбления по национальности и темы самоубийств.
    ===================================================================== */
 const FEEDS = [
-  /* Наука и технологии */
-  { n: 'N+1', u: 'https://nplus1.ru/rss', cat: 'наука', w: 1, lang: 'ru' }, { n: 'Naked Science', u: 'https://naked-science.ru/feed', cat: 'наука', w: 0.9, lang: 'ru' },
-  { n: 'Элементы', u: 'https://elementy.ru/rss/news', cat: 'наука', w: 0.9, lang: 'ru' }, { n: 'Хабр', u: 'https://habr.com/ru/rss/news/?fl=ru', cat: 'технологии', w: 0.7, lang: 'ru' },
-  { n: 'Nature', u: 'https://www.nature.com/nature.rss', cat: 'наука', w: 1.2, lang: 'en' }, { n: 'Science News', u: 'https://www.science.org/rss/news_current.xml', cat: 'наука', w: 1.2, lang: 'en' },
-  { n: 'BBC Science', u: 'https://feeds.bbci.co.uk/news/science_and_environment/rss.xml', cat: 'наука', w: 1, lang: 'en' }, { n: 'Ars Technica', u: 'https://feeds.arstechnica.com/arstechnica/index', cat: 'технологии', w: 0.9, lang: 'en' },
-  /* Культура и спорт */
-  { n: 'The Guardian Culture', u: 'https://www.theguardian.com/culture/rss', cat: 'культура', w: 0.8, lang: 'en' }, { n: 'BBC Sport', u: 'https://feeds.bbci.co.uk/sport/rss.xml', cat: 'спорт', w: 0.7, lang: 'en' },
-  /* Россия: общие ленты новостных агентств и изданий (политика допускается) */
-  { n: 'ТАСС', u: 'https://tass.ru/rss/v2.xml', cat: 'новости', w: 1, lang: 'ru', big: true }, { n: 'РИА Новости', u: 'https://ria.ru/export/rss2/archive/index.xml', cat: 'новости', w: 0.9, lang: 'ru', big: true },
-  { n: 'Интерфакс', u: 'https://www.interfax.ru/rss.asp', cat: 'новости', w: 1, lang: 'ru', big: true }, { n: 'Коммерсантъ', u: 'https://www.kommersant.ru/RSS/news.xml', cat: 'новости', w: 1, lang: 'ru', big: true },
-  { n: 'РБК', u: 'https://rssexport.rbc.ru/rbcnews/news/30/full.rss', cat: 'новости', w: 0.9, lang: 'ru', big: true }, { n: 'Lenta.ru', u: 'https://lenta.ru/rss/news', cat: 'новости', w: 0.7, lang: 'ru', big: true },
-  /* Мир */
-  { n: 'BBC World', u: 'https://feeds.bbci.co.uk/news/world/rss.xml', cat: 'мир', w: 1.2, lang: 'en', big: true }, { n: 'The Guardian World', u: 'https://www.theguardian.com/world/rss', cat: 'мир', w: 1, lang: 'en', big: true },
-  { n: 'Al Jazeera', u: 'https://www.aljazeera.com/xml/rss/all.xml', cat: 'мир', w: 0.9, lang: 'en', big: true }
+  /* ══ НАУКА РОССИЙСКАЯ ══════════════════════════════════════════════════════════════════════
+     N+1, Naked Science, Элементы — три лучших русскоязычных научпоп-издания. Почти никогда
+     не пишут о военных конфликтах. РИА Наука и ТАСС Наука — тематические разделы крупных
+     агентств: науку от политики там разделяет редакция, а не только наш фильтр.
+     Коммерсантъ Наука — глубокие материалы об открытиях и технологиях.              */
+  { n: 'N+1',             u: 'https://nplus1.ru/rss',                                        cat: 'наука',       w: 1.3, lang: 'ru' },
+  { n: 'Naked Science',   u: 'https://naked-science.ru/feed',                                cat: 'наука',       w: 1.1, lang: 'ru' },
+  { n: 'Элементы',        u: 'https://elementy.ru/rss/news',                                 cat: 'наука',       w: 1.1, lang: 'ru' },
+  { n: 'РИА Наука',       u: 'https://ria.ru/export/rss2/science/index.xml',                 cat: 'наука',       w: 1.0, lang: 'ru' },
+  { n: 'ТАСС Наука',      u: 'https://tass.ru/rss/v2.xml?sections=nauka',                    cat: 'наука',       w: 1.0, lang: 'ru' },
+  { n: 'Коммерсант Наука',u: 'https://www.kommersant.ru/RSS/science.xml',                    cat: 'наука',       w: 0.9, lang: 'ru' },
+
+  /* ══ ТЕХНОЛОГИИ И ИИ ════════════════════════════════════════════════════════════════════════
+     Хабр AI и Хабр ML — профильные хабы на русском. Хабр Новости — общий поток.
+     BBC Technology и Guardian Tech — лучшие мировые технологические разделы, почти без
+     военного контента. Ars Technica — глубокий анализ технологий.                    */
+  { n: 'Хабр ИИ',         u: 'https://habr.com/ru/rss/hub/artificial_intelligence/all/?fl=ru', cat: 'ИИ',        w: 1.2, lang: 'ru', aiTopic: true },
+  { n: 'Хабр ML',         u: 'https://habr.com/ru/rss/hub/machine_learning/all/?fl=ru',      cat: 'ИИ',          w: 1.1, lang: 'ru', aiTopic: true },
+  { n: 'Хабр',            u: 'https://habr.com/ru/rss/news/?fl=ru',                          cat: 'технологии',  w: 0.8, lang: 'ru' },
+  { n: 'BBC Technology',  u: 'https://feeds.bbci.co.uk/news/technology/rss.xml',             cat: 'технологии',  w: 0.9, lang: 'en' },
+  { n: 'Guardian Tech',   u: 'https://www.theguardian.com/technology/rss',                   cat: 'технологии',  w: 0.8, lang: 'en' },
+  { n: 'Ars Technica',    u: 'https://feeds.arstechnica.com/arstechnica/index',              cat: 'технологии',  w: 0.9, lang: 'en' },
+
+  /* ══ МИРОВАЯ НАУКА (английская, без политики) ══════════════════════════════════════════════
+     Nature и Science News — рецензируемая наука. BBC Science — широкая аудитория.
+     Guardian Science — понятно написанная наука от ведущих журналистов.               */
+  { n: 'Nature',          u: 'https://www.nature.com/nature.rss',                            cat: 'наука',       w: 1.3, lang: 'en' },
+  { n: 'Science News',    u: 'https://www.science.org/rss/news_current.xml',                 cat: 'наука',       w: 1.2, lang: 'en' },
+  { n: 'BBC Science',     u: 'https://feeds.bbci.co.uk/news/science_and_environment/rss.xml',cat: 'наука',       w: 1.0, lang: 'en' },
+  { n: 'Guardian Science',u: 'https://www.theguardian.com/science/rss',                      cat: 'наука',       w: 0.9, lang: 'en' },
+
+  /* ══ РОССИЯ: КУЛЬТУРА, ОБЩЕСТВО, ЭКОНОМИКА ══════════════════════════════════════════════════
+     РИА Культура и ТАСС Культура — события культуры и искусства.
+     Коммерсантъ (общий) — деловое издание с глубокой аналитикой. РБК — экономика.
+     Интерфакс — нейтральное информационное агентство.                                 */
+  { n: 'РИА Культура',    u: 'https://ria.ru/export/rss2/culture/index.xml',                 cat: 'культура',    w: 1.0, lang: 'ru', big: true },
+  { n: 'ТАСС Культура',   u: 'https://tass.ru/rss/v2.xml?sections=kultura',                  cat: 'культура',    w: 0.9, lang: 'ru', big: true },
+  { n: 'Коммерсантъ',     u: 'https://www.kommersant.ru/RSS/news.xml',                       cat: 'новости',     w: 0.9, lang: 'ru', big: true },
+  { n: 'РБК',             u: 'https://rssexport.rbc.ru/rbcnews/news/30/full.rss',            cat: 'экономика',   w: 0.8, lang: 'ru', big: true },
+  { n: 'Интерфакс',       u: 'https://www.interfax.ru/rss.asp',                              cat: 'новости',     w: 0.9, lang: 'ru', big: true },
+
+  /* ══ СПОРТ ══════════════════════════════════════════════════════════════════════════════════
+     BBC Sport — нейтральный и без политики. ТАСС Спорт — российский спорт.           */
+  { n: 'BBC Sport',       u: 'https://feeds.bbci.co.uk/sport/rss.xml',                       cat: 'спорт',       w: 0.7, lang: 'en' },
+  { n: 'ТАСС Спорт',      u: 'https://tass.ru/rss/v2.xml?sections=sport',                    cat: 'спорт',       w: 0.7, lang: 'ru' },
+
+  /* ══ УБРАНЫ: BBC World, Guardian World, Al Jazeera ══════════════════════════════════════════
+     Причина: активно освещают военный конфликт — основной источник утечек 02.10.
+     Замена: тематические разделы тех же доменов (наука, технологии, культура).       */
 ];
 export function parseRss(xml) {
   const items = [];
@@ -475,6 +510,7 @@ async function buildFilms(seen) {
    ===================================================================== */
 const YEAR_PAGE = /^\d{3,4}(\s*(год|до\s*н\.?\s*э\.?))?$/i;   // страница-заглушка «1981 год» — это не статья о событии
 const EV_SCIENCE = /открыл|открыти|изобр[её]л|изобретен|теори|доказал|впервые|первый (полёт|полет|спутник|искусственн)|космос|космическ|орбит|спутник|телескоп|вакцин|антибиотик|пенициллин|днк|рентген|электричеств|радио|телефон|телеграф|паровоз|автомобил|самол[её]т|аэроплан|компьютер|интернет|периодическ|нобелевск|атом|ядерн|лазер|транзистор|учёный|ученый|академи|университет|институт|лаборатор/i;
+const EV_AI = /искусственн.{0,15}интеллект|нейросет|языков.{0,10}модел|GPT|ChatGPT|нейронн.{0,10}сет|машинн.{0,10}обучен|deep.{0,5}learning|алгоритм.{0,15}(обучен|распознав|генератив)|робот.{0,10}(обуч|интеллект|разум)|Тьюринг|AlphaGo|DeepMind|OpenAI|Anthropic|Яндекс.{0,10}(GPT|ИИ)|Siri|ChatGPT|трансформер|LLM/i; // рубрика «ии» из ru-dates.mjs и события с ИИ-тематикой
 const EV_HISTORY = /завоеван|восстани|высадил|мятеж|осад|битв|сражени|победа|победил|капитуляц|основан|основал|провозгласил|независимост|коронова|венчан|крещени|принял христианств|объединени|революци|штурм|договор|конституци|манифест|отменил|освобожден|окончани|завершилась/i;
 const EV_MINOR = /запросил.{0,15}убежищ|попросил.{0,15}убежищ|эмигрировал|развел|развёл|женил|вышла замуж|арестован|задержан|уволен|отправлен в отставку|назначен|матч|чемпионат|рекорд|дебют|альбом|сингл|скончал|умер/i;
 const PERSON_DESC = /учён|учен|физик|хим|биолог|математик|астроном|изобретател|врач|медик|инженер|конструктор|космонавт|естествоиспытател|философ|географ|путешественник|лётчик|летчик|педагог|писател|поэт|композитор|художник|архитектор|полководец|адмирал|император|царь|князь|государствен|основател/i;
@@ -522,9 +558,9 @@ async function buildEvents() {
   if (fameOk) report['events:известность'] = `Викиданные, статей с оценкой: ${fame.size}`;
   const fameP = pg => fame.get(qidOf(pg)) || 0;
   const txtOf = c => c.e.text + ' ' + (c.p.extract || '');
-  const catOf = t => (EV_SCIENCE.test(t) ? 'наука' : EV_HISTORY.test(t) ? 'история' : 'событие');
+  const catOf = (t, k) => k === 'ии' || EV_AI.test(t) ? 'ии' : (EV_SCIENCE.test(t) || k === 'наука') ? 'наука' : EV_HISTORY.test(t) ? 'история' : 'событие';
   const score = c => { const t = txtOf(c);
-    return 10 * Math.log10(1 + fameP(c.p)) + (c.from === 'selected' ? 4 : 0) + (EV_SCIENCE.test(t) ? 3 : 0) + (EV_HISTORY.test(t) ? 3 : 0) + (RUSSIA.test(t) ? 2 : 0) - (EV_MINOR.test(c.e.text) ? 8 : 0) + Math.min((c.e.pages || []).length, 5) * 0.3; };
+    return 10 * Math.log10(1 + fameP(c.p)) + (c.from === 'selected' ? 4 : 0) + (EV_SCIENCE.test(t) ? 3 : 0) + (EV_AI.test(t) || (c.rd && c.rd.k === 'ии') ? 3 : 0) + (EV_HISTORY.test(t) ? 3 : 0) + (RUSSIA.test(t) ? 2 : 0) - (EV_MINOR.test(c.e.text) ? 8 : 0) + Math.min((c.e.pages || []).length, 5) * 0.3; }; // ИИ-события — тот же бонус что и научные/исторические
   const ranked = cands.filter(c => !BLOCK.core(txtOf(c))).map(c => ({ c, s: score(c), cat: catOf(txtOf(c)) })).sort((a, b) => b.s - a.s);
   /* основной список: сначала записи календаря России, дальше — самые известные, не больше двух из одной рубрики */
   const main = stat.filter(x => x.y).map(x => ({ y: x.y, t: x.t, cat: x.k, glory: !!x.glory, src: 'Календарь России' }));
