@@ -253,7 +253,7 @@ const BODY = {
   news() { return `<div id="news-body">${skel()}</div>`; },
   prompt() {
     const P = dailyOk() && DAILY.prompts && DAILY.prompts[0]; if (!P || P.lang === 'en') return this.promptFallback();
-    const it = mk('prompt', P.text, P.title + ' · ' + (P.src || '')), rec = dayRec(viewDate), A = P.analysis;
+    const it = mk('prompt', P.text, P.title + ' · ' + (P.src || '')), rec = dayRec(viewDate), A = P.analysis, aiN = P.aiNews, term = P.termOfDay;
     return `<h3>${esc(P.title)}</h3><pre class="prompt">${escVars(P.text)}</pre>
       ${hasVars(P.text) ? `<p class="muted"><small>Место вида <mark class="var">$&#123;так&#125;</mark> — впиши сюда своё: тему, число, контекст. Это не ошибка, а поле для заполнения — готовую версию сохрани в поле ниже.</small></p>` : ''}
       <div class="row">${actions(it)}<button class="btn sm" data-act="copy" data-id="${it.id}">Скопировать промпт</button></div>
@@ -262,6 +262,8 @@ const BODY = {
       <label class="f" for="taskText">Твоя версия промпта</label>
       <textarea id="taskText" placeholder="Адаптируй промпт под свою задачу — он сохранится автоматически">${esc(rec.task)}</textarea>
       <div class="row" style="margin-top:8px"><button class="btn sm" data-act="savePrompt">Сохранить в мою коллекцию</button></div>
+      ${term ? `<div class="card" style="margin-top:1rem;padding:1rem;border-left:4px solid var(--amber)"><p style="margin:0 0 .4rem"><span class="tag amber">🔑 Термин дня</span> <b>${esc(term.term)}</b></p><p><b>Просто говоря:</b> ${esc(term.simple)}</p><p><b>Аналогия из жизни:</b> ${esc(term.analogy)}</p><p><b>Пример:</b> ${esc(term.ex)}</p><p class="muted"><b>Совет:</b> ${esc(term.tip)}</p></div>` : ''}
+      ${aiN ? `<div class="card" style="margin-top:1rem;padding:1rem;border-left:4px solid var(--muted)"><p style="margin:0 0 .4rem"><span class="tag">🌐 Новость из мира ИИ</span> <b>${esc(aiN.title)}</b></p><p>${esc(aiN.body)}</p>${aiN.why ? `<p class="muted"><b>Почему важно:</b> ${esc(aiN.why)}</p>` : ''}${aiN.url ? `<a class="btn ghost sm" href="${esc(aiN.url)}" target="_blank" rel="noopener noreferrer">Источник: ${esc(aiN.src)}</a>` : ''}</div>` : ''}
       <p class="muted"><small>${esc(P.src || '')}. Каждый день — новый промпт из каталога: лучший из ещё не показанных.</small></p>`;
   },
   promptFallback() {
