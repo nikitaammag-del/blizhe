@@ -369,7 +369,7 @@ async function buildBooks(seen) {
   for (const lang of ['rus', 'eng']) { const j = await getJSON(`https://openlibrary.org/search.json?q=${encodeURIComponent(`subject:"${subj}" language:${lang}`)}&sort=rating&limit=30&fields=key,title,author_name,first_publish_year,ratings_average,ratings_count`);
     docs = (j.docs || []).filter(d => d.ratings_count >= 5 && d.ratings_average); if (docs.length) { lg = lang; break; } }
   const ranked = docs.map(d => ({ t: d.title, a: (d.author_name || ['—'])[0], y: d.first_publish_year, rating: Math.round(d.ratings_average * 100) / 100, count: d.ratings_count, url: 'https://openlibrary.org' + d.key,
-    score: Math.round(d.ratings_average * Math.log(1 + d.ratings_count) * 100) / 100, why: '' })).filter(b => !seen.has(norm(b.t)) && !seen.has(b.url)).sort((a, b) => b.score - a.score);
+    score: Math.round(d.ratings_average * Math.log(1 + d.ratings_count) * 100) / 100, why: '', olKey: d.key })).filter(b => !seen.has(norm(b.t)) && !seen.has(b.url)).sort((a, b) => b.score - a.score);
   if (!ranked.length) throw new (docs.length ? Exhausted : Error)('нет подходящих книг');
   /* Сначала книги, у которых название уже по-русски; название и имя автора должны быть кириллицей (иначе переводим/транслитерируем) */
   const ordered = [...ranked.filter(b => cyr(b.t) >= 0.5), ...ranked.filter(b => cyr(b.t) < 0.5)].slice(0, 30);
@@ -382,6 +382,16 @@ async function buildBooks(seen) {
       if (cyr(a) < 0.5) { if (cyr(tr[0].text) >= 0.5) a = tr[0].text.replace(/\s*\([^)]*\)\s*$/, ''); else continue; } // убираем «(альтернативное имя)», если модель его добавила
     }
     const y = await realPublishYear(b.url, b.y); // год у самого «произведения» в Open Library иногда испорчен; берём минимальный год из реальных изданий
+    /* Краткое описание книги: Open Library → GigaChat */
+    if (!b.why) {
+      try { const olj = await getJSON('https://openlibrary.org' + (b.olKey||'/works/X') + '.json').catch(()=>({}));
+        const desc = olj.description && (typeof olj.description === 'string' ? olj.description : (olj.description||{}).value);
+        if (desc && desc.length > 40) b.why = clip(oneLine(desc), 260); } catch(e) {}
+    }
+    if (!b.why && HAS_LLM && b.t && b.a) {
+      try { const braw = await retry(() => llm('Опиши книгу «' + b.t + '» (автор: ' + b.a + (b.y ? ', ' + b.y + ' г.' : '') + ') в 2–3 предложениях: о чём она и почему стоит прочитать. Только текст без вступлений, до 220 знаков.', 280, 0.3));
+        if (braw && braw.length > 30 && safeText(braw)) b.why = clip(oneLine(braw), 240); } catch(e) {}
+    }
     return [{ ...b, t, a, y, ...(orig ? { orig } : {}) }];
   }
   throw new Error('у лучших книг нет русского названия или имени автора, а перевод недоступен — остаётся русская база');
@@ -910,7 +920,9 @@ async function buildLesson() {
   // через год повторяем только урок, который прошёл строгую проверку v2 (автопроверка + рецензент-психолог) с оценкой ≥ 8
   if (prev && prev.lesson && prev.lesson.topic === t.topic && prev.lesson.quality >= 8 && prev.lesson.qa && prev.lesson.qa.v === 2 && prev.lesson.qa.pass) { report['lesson:повтор'] = 'год прошёл: берём лучший урок прошлого года (оценка ' + prev.lesson.quality + ')'; return { ...prev.lesson, reused: true }; }
   if (!HAS_LLM) throw new Error('для нового урока нужна нейросеть (GigaChat) — используется встроенная база');
-  const { lesson, log } = await generateLessonV2(t, COURSE_DAY, { llm: (p, m, temp) => retry(() => llm(p, m, temp)), safe: safeText });
+  const LECTURE_PRONE = /^как (говор|выраз|сказ|объясн|попрос|отказ|поддерж|слуш|реагир|понять)|^(понять|принят|осознать|важность)/i;
+  const attempts = LECTURE_PRONE.test(t.topic) ? 5 : 3;
+  const { lesson, log } = await generateLessonV2(t, COURSE_DAY, { llm: (p, m, temp) => retry(() => llm(p, m, temp)), safe: safeText, attempts });
   const j = lesson.qa.judge;
   report['lesson:оценка'] = `${lesson.quality}/10 · автопроверка ${lesson.qa.format}` + (j ? ` · психолог ${j.avg} (логика ${j.ЛОГИКА}, безопасность ${j.БЕЗОПАСНОСТЬ})` : ' · рецензент не ответил') + ` · попыток ${log.length}`;
   if (lesson.weak) report['lesson:слабый'] = 'строгую планку не прошёл, принят по минимальной (в канал не публикуется)' + (j && j.note ? ': ' + j.note : '');

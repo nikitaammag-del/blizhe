@@ -241,13 +241,23 @@ export async function generateLessonV2(t, day, { llm, safe = () => true, attempt
     if (c.ok && judge) {
       try { j = parseJudge(await llm(judgePrompt(t, c.lesson), 300, 0.1)); } catch (e) { /* рецензент недоступен — решаем по автопроверке */ }
     }
-    const score = total(c, j), entry = { i, hard: c.hard, soft: c.soft, format: c.format, judge: j, score };
+    const score = total(c, j), entry = { i, hard: c.hard, soft: c.soft, format: c.format, judge: j, score, _raw: raw };
     log.push(entry);
     if (minimal(c, j) && (!best || score > best.score)) best = { c, j, score, pass: passes(c, j) || (!judge && c.ok && c.format >= 8) };
     if (best && best.pass && best.score >= 8) break;
     const fix = [...c.hard, ...c.soft]; if (j && j.note) fix.push('рецензент-психолог: ' + j.note);
     if (j) CRITERIA.filter(k => j[k] < 7).forEach(k => fix.push(`низкая оценка «${k}» (${j[k]})`));
     feedback = fix.length ? `\n\nВАЖНО. Прошлый вариант отклонён. Исправь: ${fix.join('; ')}. Строго соблюдай формат и правила выше.` : '';
+  }
+  if (!best) {
+    const HARD_SAFE = /запрещённые|мат|язык|небезопасн/;
+    const fallback = log.filter(l => !l.error && !(l.hard||[]).some(e=>HARD_SAFE.test(e)) && l.format >= 5 && l._raw
+      && !(l.judge && l.judge.БЕЗОПАСНОСТЬ < 8)) // если психолог поставил низкую безопасность — не берём даже как fallback
+      .sort((a,b) => (b.format||0)-(a.format||0))[0];
+    if (fallback) {
+      const c2 = checkLessonV2(fallback._raw, { day, safe });
+      best = { c: c2, j: null, score: Math.round(fallback.format * 0.6 * 10)/10, pass: false };
+    }
   }
   if (!best) throw new Error('урок не прошёл проверку: ' + log.map(l => l.error || (l.hard.join(', ') || (l.judge ? 'оценка ' + l.score + (l.judge.note ? ' — ' + l.judge.note : '') : 'нет оценки'))).join(' | '));
   const { c, j, score, pass } = best;
