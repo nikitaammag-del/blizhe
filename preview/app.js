@@ -402,12 +402,12 @@ function updateProgress() {
 
 /* ----- События дня: Wikipedia REST → снимок → архив ----- */
 /* «Великие события дня» из подборки: самые известные события, праздники и памятные даты России, знаменитые люди дня */
-const EV_CAT = { 'наука': 'Наука', 'победа': 'Победа', 'история': 'История', 'событие': 'Событие' };
+const EV_CAT = { 'наука': '🔬 Наука', 'победа': '⚔️ Победа', 'история': '📜 История', 'ии': '🤖 ИИ', 'событие': '📅 Событие' };
 function renderDailyEvents(box) {
   const E = DAILY.events, okT = x => !blkCore((x.t || '') + ' ' + (x.ex || ''));
   const link = (u, t) => (u ? `<a href="${esc(safeUrl(u))}" target="_blank" rel="noopener noreferrer">${esc(t)}</a>` : esc(t));
   const main = (E.main || []).filter(okT).map(x => { const it = mk('event', `${x.y}: ${x.t}`, x.src || 'Календарь России');
-    return `<div class="item"><p><span class="tag amber">${esc(x.y)}</span><span class="tag">${esc(EV_CAT[x.cat] || 'Событие')}</span>${x.glory ? '<span class="tag">День воинской славы</span>' : ''} ${esc(x.t)}</p>
+    return `<div class="item"><p><span class="tag amber">${esc(x.y)}${x.d ? ' · ' + esc(x.d) : ''}</span><span class="tag">${esc(EV_CAT[x.cat] || 'Событие')}</span>${x.glory ? '<span class="tag">День воинской славы</span>' : ''} ${esc(x.t)}</p>
       ${x.img && safeImg(x.img) && !blk(x.t) ? `<figure class="evimg"><img src="${esc(safeImg(x.img))}" alt="Иллюстрация к событию: ${esc(clip(x.t, 80))}" loading="lazy" onerror="this.closest('figure').remove()">${figCredit(x.img)}</figure>` : ''}
       ${x.ex ? `<p class="muted"><small>${esc(clip(x.ex, 240))}</small></p>` : ''}
       <div class="row">${actions(it)}${x.url ? `<a class="btn ghost sm" href="${esc(safeUrl(x.url))}" target="_blank" rel="noopener noreferrer">Читать в Википедии</a>` : ''}</div></div>`; }).join('');
