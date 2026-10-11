@@ -210,7 +210,12 @@ export function parseRss(xml) {
   }
   return items;
 }
-const toks = t => new Set(norm(t).split(' ').filter(w => w.length > 4).map(w => w.slice(0, 5)));
+const NEWS_STOP = new Set(['российском','российской','российские','российский','регионе','регионов',
+  'области','стране','городе','местных','также','будет','этого','этот','после','между','через',
+  'против','более','менее','около','тысяч','млрд','млн','году','года','рублей','рубля',
+  'человек','людей','которые','которая','которого','своей','своего','этой','своих',
+  'первый','первая','первые','новый','новая','новые','новых','стало','стала','стали']); // шаблонные слова — не определяют тему
+const toks = (t, stop = false) => new Set(norm(t).split(' ').filter(w => w.length > 4 && !(stop && NEWS_STOP.has(w))).map(w => w.slice(0, 5)));
 const RUSSIA = /росси|(^|[^а-яё])рф([^а-яё]|$)|москв|кремл|russia|moscow|kremlin/i;
 const DISCOVERY = /научн\w* открыти|открыти\w* (в области|учён|ученых|физик|астроном|биолог|химик|генетик)|(сделал|совершил)\w* открыти|учён|учен(ые|ых|ым|ыми|ого)|физик|химик[аиов]|биолог|астроном|генетик|изобрет|нобелев|прорыв в|искусственн\w* интеллект|нейросет|(^|[^а-яё])ии([^а-яё]|$)|архимед|ньютон|менделеев|радио|телескоп|космическ|квантов|днк|геном|вакцин|breakthrough|\bdiscover|\binvent(ed|ion|ions|or|ors)?\b|scientist|researchers|newton|archimedes|artificial intelligence|\bAI\b/i; // «открыт» отдельно НЕ берём: цепляет «открытая площадка», «открыли памятник»
 const CLICKBAIT = /(^|[^а-яё])шок|сенсаци|не поверите|won't believe|you won.t believe/i;
@@ -238,7 +243,7 @@ async function buildNews(seen) {
     res.forEach(x => { per[x.src] = (per[x.src] || 0) + 1; cnt[grp(x)]++; });
     const tryAdd = (x, strict, cap) => {
       if (res.length >= NEWS_N || res.includes(x) || (per[x.src] || 0) >= cap || (strict && cnt[grp(x)] >= NEWS_N / 2)) return;
-      const t = x._t || toks(x.title); if (res.some(c => { let n = 0; t.forEach(w => { if (c._t.has(w)) n++; }); return n >= 3; })) return; // та же история из другого издания
+      const t = x._t || toks(x.title, true); if (res.some(c => { let n = 0; t.forEach(w => { if (c._t.has(w)) n++; }); return n >= 2; })) return; // дубль по теме // та же история из другого издания
       x._t = t; per[x.src] = (per[x.src] || 0) + 1; cnt[grp(x)]++; res.push(x);
     };
     cands.forEach(x => tryAdd(x, true, 2));    // сначала по 3 из каждой группы, не больше 2 из одного издания
@@ -386,10 +391,17 @@ async function buildBooks(seen) {
     if (!b.why) {
       try { const olj = await getJSON('https://openlibrary.org' + (b.olKey||'/works/X') + '.json').catch(()=>({}));
         const desc = olj.description && (typeof olj.description === 'string' ? olj.description : (olj.description||{}).value);
-        if (desc && desc.length > 40) b.why = clip(oneLine(desc), 260); } catch(e) {}
+        if (desc && desc.length > 40) {
+          const olDesc = clip(oneLine(desc), 500);
+          if (cyr(olDesc) >= 0.5) { b.why = clip(olDesc, 260); }
+          else if (HAS_LLM) { // OpenLibrary часто даёт описание на английском — переводим
+            try { const tr = await retry(() => llm('Переведи на русский, только текст перевода без вступлений и кавычек: ' + olDesc, 300, 0.2));
+              if (tr && cyr(tr) >= 0.5) b.why = clip(oneLine(tr), 260); } catch(e) {}
+          }
+        } } catch(e) {}
     }
     if (!b.why && HAS_LLM && b.t && b.a) {
-      try { const braw = await retry(() => llm('Опиши книгу «' + b.t + '» (автор: ' + b.a + (b.y ? ', ' + b.y + ' г.' : '') + ') в 2–3 предложениях: о чём она и почему стоит прочитать. Только текст без вступлений, до 220 знаков.', 280, 0.3));
+      try { const braw = await retry(() => llm('Напиши по-русски: опиши книгу «' + b.t + '» (автор: ' + b.a + (b.y ? ', ' + b.y + ' г.' : '') + ') в 2–3 предложениях — о чём она и почему стоит прочитать. Только текст на русском без вступлений, до 220 знаков.', 280, 0.3));
         if (braw && braw.length > 30 && safeText(braw)) b.why = clip(oneLine(braw), 240); } catch(e) {}
     }
     return [{ ...b, t, a, y, ...(orig ? { orig } : {}) }];
@@ -544,7 +556,7 @@ async function qidsByTitle(titles) {   // запасной путь, если у
   return out;
 }
 const commonsImg = p => { const u = p && p.thumbnail && p.thumbnail.source; return /^https:\/\/upload\.wikimedia\.org\/wikipedia\/commons\//.test(u || '') ? u : ''; }; // только свободные файлы Викисклада
-const sameStory = (a, b) => { const A = toks(a), B = toks(b); let n = 0; A.forEach(w => { if (B.has(w)) n++; }); return n >= 3; };
+const sameStory = (a, b) => { const A = toks(a, true), B = toks(b, true); let n = 0; A.forEach(w => { if (B.has(w)) n++; }); return n >= 2; }; // 2 значимых слова = одна история
 
 async function buildEvents() {
   const key = TODAY.slice(5), [mm, dd] = key.split('-'), stat = RU_DATES[key] || [];
@@ -944,7 +956,12 @@ async function buildTracks(seen) {
   const all = (j.data || []).filter(t => t && t.title && t.artist && t.artist.name && !t.explicit_lyrics);
   const items = all.map(t => ({ k: jh(t.artist.name + ' ' + t.title), a: t.artist.name, t: t.title, mood: GENRE_RU[genre.name], rank: t.rank || 0, url: httpUrl(t.link) })).filter(x => !seen.has(x.k)).sort((a, b) => b.rank - a.rank);
   if (!items.length) throw new (all.length ? Exhausted : Error)('нет подходящих треков');
-  return [items[0]];
+  const track = items[0];
+  if (HAS_LLM && track.t && track.a) {
+    try { const traw = await retry(() => llm('Напиши по-русски 1–2 предложения о треке «' + track.t + '» исполнителя ' + track.a + ': в каком стиле и настроении он написан, о чём (если известно). Только текст на русском, до 120 знаков.', 180, 0.4));
+      if (traw && traw.length > 15 && cyr(traw) >= 0.5) track.why = clip(oneLine(traw), 160); } catch(e) {}
+  }
+  return [track];
 }
 
 /* =====================================================================
