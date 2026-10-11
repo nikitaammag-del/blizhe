@@ -92,6 +92,14 @@ else if (cmd === 'approve') {
   else { say(`одобрено: ${d.date}, выйдет ночью`); await tg(`✅ Выпуск на ${esc(human(d.date))} одобрен. Выйдет на сайте после полуночи, в 08:00 — в боте${process.env.TG_CHANNEL_ID ? ' и канале' : ''}.`); }
 }
 
+else if (cmd === 'publish-from-bot') {
+  // Одобрение получено через Telegram-бота (KV) — публикуем напрямую
+  const T = today(), site = readJSON('daily.json');
+  if (site && site.date === T) { say(`выпуск на ${T} уже на сайте`); process.exit(0); }
+  if (d && d.date === T) { publishNow(d); say(`опубликован выпуск (одобрен через Telegram) на ${T}`); out('published', T); process.exit(0); }
+  say(`черновика на ${T} нет — публикую через обычный путь`);
+  // Fallback на обычный publish
+}
 else if (cmd === 'publish') {
   const T = today(), site = readJSON('daily.json');
   if (site && site.date === T) { say(`выпуск на ${T} уже на сайте`); process.exit(0); }
