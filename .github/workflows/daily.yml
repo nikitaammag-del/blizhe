@@ -29,8 +29,30 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
+      - name: Проверить одобрение (KV бота или файл)
+        id: check
+        run: |
+          # Сначала спрашиваем бота (одобрение через Telegram → KV)
+          TODAY=$(TZ=Europe/Moscow date +%F)
+          BOT_RESULT=$(curl -sf --max-time 5 "https://blizhe-bot.nikitaammag.workers.dev/approved?key=${{ secrets.WEBHOOK_SECRET }}&date=$TODAY" 2>/dev/null || echo "error")
+          echo "Ответ бота: $BOT_RESULT (дата: $TODAY)"
+          if [ "$BOT_RESULT" = "yes" ]; then
+            echo "source=bot" >> "$GITHUB_OUTPUT"
+          elif [ "$(cat preview/approved.txt 2>/dev/null || echo '')" = "$TODAY" ]; then
+            echo "source=file" >> "$GITHUB_OUTPUT"
+          else
+            echo "source=none" >> "$GITHUB_OUTPUT"
+          fi
       - name: Опубликовать одобренный выпуск
-        run: node tools/release.mjs publish
+        run: |
+          SOURCE="${{ steps.check.outputs.source }}"
+          if [ "$SOURCE" = "bot" ] || [ "$SOURCE" = "file" ]; then
+            echo "Одобрено ($SOURCE) — публикуем"
+            node tools/release.mjs publish-from-bot
+          else
+            echo "Не одобрено — пропускаем"
+            node tools/release.mjs publish
+          fi
       # Утренний пост в канал: один раз в день, с 06:00 до 13:00 по Москве, только одобренный и прошедший проверку урок
       - name: Пост «Фраза дня» в Telegram-канал
         if: env.TG_BOT_TOKEN != '' && env.TG_CHANNEL_ID != ''
